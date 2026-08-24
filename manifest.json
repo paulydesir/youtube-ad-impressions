@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Ad Impressions",
+  "version": "0.2.0",
+  "description": "Privately tracks and summarizes YouTube video-ad impressions.",
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "action": {
+    "default_title": "YouTube Ad Impressions",
+    "default_popup": "popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["src/ad-state-machine.js", "src/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>YouTube Ad Impressions</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">LOCAL AD JOURNAL</p>
+        <h1>YouTube Ad Impressions</h1>
+        <p id="status" class="status">Loading local history…</p>
+      </header>
+
+      <section class="metrics" aria-label="Summary">
+        <article><strong id="total-impressions">—</strong><span>Impressions</span></article>
+        <article><strong id="total-time">—</strong><span>Ad time</span></article>
+        <article><strong id="ads-per-hour">—</strong><span>Ads / watch hr</span></article>
+        <article><strong id="skip-rate">—</strong><span>Skipped</span></article>
+      </section>
+
+      <section>
+        <h2>Most frequent advertisers</h2>
+        <ol id="advertisers" class="ranking"></ol>
+      </section>
+
+      <section>
+        <h2>Recent impressions</h2>
+        <div id="recent" class="recent"></div>
+      </section>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
