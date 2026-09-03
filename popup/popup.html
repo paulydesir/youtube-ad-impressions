@@ -30,6 +30,20 @@
         <h2>Recent impressions</h2>
         <div id="recent" class="recent"></div>
       </section>
+
+      <section>
+        <h2>Backup &amp; restore</h2>
+        <p id="backup-status" class="status" role="status">Export a JSON copy, or restore one.</p>
+        <div class="backup-row">
+          <button id="export" type="button">Export JSON</button>
+          <label class="import-label" for="import-file">Import JSON</label>
+          <input id="import-file" type="file" accept=".json,application/json" hidden>
+          <select id="import-mode" aria-label="Import mode">
+            <option value="merge">Merge</option>
+            <option value="replace">Replace</option>
+          </select>
+        </div>
+      </section>
     </main>
     <script src="popup.js"></script>
   </body>

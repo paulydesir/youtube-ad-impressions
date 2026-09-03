@@ -1,11 +1,6 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const vm = require("node:vm");
-const test = require("node:test");
-
-const context = vm.createContext({});
-vm.runInContext(fs.readFileSync("src/analytics.js", "utf8"), context);
-const { aggregateImpressions } = context.YouTubeAdAnalytics;
+import assert from "node:assert/strict";
+import test from "node:test";
+import { aggregateImpressions } from "../src/analytics.ts";
 
 test("aggregates advertiser frequency, duration, and skips", () => {
   const result = aggregateImpressions(
@@ -22,6 +17,16 @@ test("aggregates advertiser frequency, duration, and skips", () => {
   assert.equal(result.averageAdMs, 10000);
   assert.equal(result.skippedCount, 1);
   assert.equal(result.adsPerWatchHour, 6);
-  assert.equal(result.advertisers[0].name, "Acme");
-  assert.equal(result.advertisers[0].impressions, 2);
+  assert.equal(result.advertisers[0]?.name, "Acme");
+  assert.equal(result.advertisers[0]?.impressions, 2);
+});
+
+test("handles empty histories without watch time", () => {
+  const result = aggregateImpressions([], 0);
+
+  assert.equal(result.totalImpressions, 0);
+  assert.equal(result.averageAdMs, 0);
+  assert.equal(result.skipRate, 0);
+  assert.equal(result.adsPerWatchHour, null);
+  assert.deepEqual(result.advertisers, []);
 });

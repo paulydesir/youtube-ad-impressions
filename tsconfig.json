@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // TypeScript 7 (native Go port) — same language semantics, ~10x faster checks.
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    // Relative imports use explicit `.ts` extensions so the same source runs
+    // under Node 24 type-stripping (tests) and bundles with esbuild (extension).
+    "allowImportingTsExtensions": true,
+    // Emit is handled by esbuild; tsc is the typechecker only.
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["chrome", "node"]
+  },
+  "include": ["src", "popup", "test", "scripts"]
+}

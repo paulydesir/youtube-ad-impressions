@@ -1,29 +1,24 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const vm = require("node:vm");
-const test = require("node:test");
-
-const context = vm.createContext({});
-vm.runInContext(
-  fs.readFileSync("src/ad-state-machine.js", "utf8"),
-  context,
-);
-
-const { AdStateMachine, DomainImpressionTracker, playerIsShowingAd } =
-  context.YouTubeAdWatcher;
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  AdStateMachine,
+  DomainImpressionTracker,
+  playerIsShowingAd,
+} from "../src/ad-state-machine.ts";
 
 test("recognizes both known YouTube ad classes", () => {
   const player = {
-    classList: { contains: (name) => name === "ad-interrupting" },
+    classList: { contains: (name: string) => name === "ad-interrupting" },
   };
   assert.equal(playerIsShowingAd(player), true);
   assert.equal(playerIsShowingAd(null), false);
+  assert.equal(playerIsShowingAd(undefined), false);
 });
 
 test("emits exactly one lifecycle for repeated observations", () => {
   let time = 1000;
-  const starts = [];
-  const ends = [];
+  const starts: Array<{ startedAtMs: number }> = [];
+  const ends: Array<{ durationMs: number | null }> = [];
   const state = new AdStateMachine({
     now: () => time,
     onStart: (event) => starts.push(event),
@@ -38,14 +33,14 @@ test("emits exactly one lifecycle for repeated observations", () => {
   state.update(false);
 
   assert.equal(starts.length, 1);
-  assert.equal(starts[0].startedAtMs, 1000);
+  assert.equal(starts[0]?.startedAtMs, 1000);
   assert.equal(ends.length, 1);
-  assert.equal(ends[0].durationMs, 3750);
+  assert.equal(ends[0]?.durationMs, 3750);
 });
 
 test("reset closes an active lifecycle", () => {
   let time = 10;
-  const ends = [];
+  const ends: Array<{ durationMs: number | null; reason?: unknown }> = [];
   const state = new AdStateMachine({
     now: () => time,
     onEnd: (event) => ends.push(event),
@@ -56,14 +51,14 @@ test("reset closes an active lifecycle", () => {
   state.reset({ reason: "player-replaced" });
 
   assert.equal(state.active, false);
-  assert.equal(ends[0].durationMs, 15);
-  assert.equal(ends[0].reason, "player-replaced");
+  assert.equal(ends[0]?.durationMs, 15);
+  assert.equal(ends[0]?.reason, "player-replaced");
 });
 
 test("tracks each advertiser-domain change within one ad pod", () => {
   let time = 100;
-  const starts = [];
-  const ends = [];
+  const starts: Array<{ advertiserDomain: string; impressionIndex: number }> = [];
+  const ends: Array<{ durationMs: number; reason: string }> = [];
   const tracker = new DomainImpressionTracker({
     now: () => time,
     onStart: (event) => starts.push(event),
@@ -89,7 +84,7 @@ test("tracks each advertiser-domain change within one ad pod", () => {
     ],
   );
   assert.equal(ends.length, 2);
-  assert.equal(ends[0].durationMs, 1000);
-  assert.equal(ends[0].reason, "advertiser-changed");
-  assert.equal(ends[1].reason, "pod-ended");
+  assert.equal(ends[0]?.durationMs, 1000);
+  assert.equal(ends[0]?.reason, "advertiser-changed");
+  assert.equal(ends[1]?.reason, "pod-ended");
 });

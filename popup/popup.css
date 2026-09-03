@@ -36,3 +36,29 @@ h2 { color: #b7b8be; font-size: 11px; letter-spacing: .08em; text-transform: upp
 .count, .meta { color: #92949c; font-size: 11px; }
 .recent-item time { color: #92949c; font-size: 10px; }
 .empty { color: #92949c; font-size: 13px; padding: 18px 0; }
+
+.backup-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.backup-row button, .import-label {
+  appearance: none;
+  border: 1px solid #34373f;
+  border-radius: 10px;
+  background: #1a1c21;
+  color: #f6f2ea;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.backup-row button:hover, .import-label:hover { border-color: #ff6b4a; }
+.backup-row button:disabled { opacity: .5; cursor: default; }
+.backup-row select {
+  margin-left: auto;
+  border: 1px solid #34373f;
+  border-radius: 10px;
+  background: #1a1c21;
+  color: #f6f2ea;
+  font: inherit;
+  font-size: 12px;
+  padding: 8px;
+}
