@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "npm run dev --workspace @ad-impressions/server",
     "test": "npm run test --workspaces --if-present",
     "test:extension": "npm run test --workspace @ad-impressions/extension",
     "build:extension": "npm run build --workspace @ad-impressions/extension",
