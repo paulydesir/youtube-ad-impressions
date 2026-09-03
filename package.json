@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "npm run build --workspace @ad-impressions/contracts && npm run dev --workspace @ad-impressions/server",
     "migrate": "npm run migrate --workspace @ad-impressions/server",
+    "import": "npm run import --workspace @ad-impressions/server",
     "test": "npm run test --workspaces --if-present",
     "test:extension": "npm run test --workspace @ad-impressions/extension",
     "build:extension": "npm run build --workspace @ad-impressions/extension",

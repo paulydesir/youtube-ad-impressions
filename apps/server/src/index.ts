@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { loadConfig } from "./config/env.js";
+import { initializeDatabase } from "./db/client.js";
 import { createApp } from "./http/app.js";
 
 // Load apps/server/.env regardless of the working directory callers run
@@ -20,7 +21,20 @@ function main(): void {
     process.exit(1);
   }
 
-  const app = createApp();
+  let db;
+  try {
+    db = initializeDatabase(config.DATABASE_FILE);
+  } catch (error) {
+    console.error(
+      `Failed to open database at ${config.DATABASE_FILE}: ${error instanceof Error ? error.message : error}`,
+    );
+    process.exit(1);
+  }
+
+  const app = createApp({
+    db,
+    ingestToken: config.INGEST_API_TOKEN,
+  });
   const server = app.listen(config.PORT, config.HOST, () => {
     console.info(`Listening on http://${config.HOST}:${config.PORT}`);
   });

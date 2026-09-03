@@ -1,16 +1,50 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import request from "supertest";
 import { loadConfig } from "../src/config/env.js";
+import {
+  closeDatabase,
+  initializeDatabase,
+  type DatabaseClient,
+} from "../src/db/client.js";
 import { createApp } from "../src/http/app.js";
 
 const TOKEN = "test-token";
 
+let db: DatabaseClient;
+
+afterEach(() => {
+  // Tests may close the database themselves (unavailability probe); a second
+  // close is harmless.
+  try {
+    if (db !== undefined) closeDatabase(db);
+  } catch {
+    // Already closed.
+  }
+});
+
+function testApp() {
+  const dir = mkdtempSync(join(tmpdir(), "ad-impressions-foundation-"));
+  db = initializeDatabase(join(dir, "test.sqlite"));
+  return createApp({ db, ingestToken: TOKEN });
+}
+
 describe("GET /healthz", () => {
-  it("reports the service is up without opening a port", async () => {
-    const response = await request(createApp()).get("/healthz");
+  it("reports the service and database as ready without opening a port", async () => {
+    const response = await request(testApp()).get("/healthz");
     assert.equal(response.status, 200);
-    assert.deepEqual(response.body, { ok: true, database: "not-configured" });
+    assert.deepEqual(response.body, { ok: true, database: "ready" });
+  });
+
+  it("reports unavailability when the database cannot answer", async () => {
+    const app = testApp();
+    closeDatabase(db);
+    const response = await request(app).get("/healthz");
+    assert.equal(response.status, 503);
+    assert.deepEqual(response.body, { ok: false, database: "unavailable" });
   });
 });
 
