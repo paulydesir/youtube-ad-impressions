@@ -1,0 +1,7 @@
+{
+  "name": "@ad-impressions/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reserved location for shared AdImpressionV1 schemas (Feature 2)."
+}

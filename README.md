@@ -3,23 +3,30 @@
 A privacy-first Chrome extension for observing, storing, and analyzing YouTube
 video-ad impressions. All history stays in extension-owned IndexedDB storage.
 
+This repository is a private npm-workspaces monorepo. The extension lives in
+`apps/extension`; `apps/server` and `packages/contracts` are reserved locations
+for the local companion-server work described in
+`CHATGPT_EXTENSION_DATA_MVP_SPEC.md`.
+
 ## Develop (TypeScript 7)
 
 Requires Node 24+ (tests rely on native type-stripping).
 
 ```sh
 npm install
-npm run typecheck  # tsc --noEmit (TypeScript 7 native compiler)
-npm run build      # typecheck + esbuild bundles into dist/
-npm test           # node:test over test/**/*.test.ts, no compile step
+npm run typecheck:extension  # tsc --noEmit for the extension workspace
+npm run build:extension      # typecheck + esbuild bundles into apps/extension/dist/
+npm test                     # all workspace tests (currently the extension tests)
+npm run test:extension       # extension tests only
 ```
 
 ## Load locally
 
-1. Run `npm run build` so `dist/` exists (the manifest points at `dist/`).
+1. Run `npm run build:extension` so `apps/extension/dist/` exists (the manifest
+   points at `dist/` relative to `apps/extension`).
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
-4. Choose **Load unpacked** and select this directory.
+4. Choose **Load unpacked** and select the `apps/extension` directory.
 5. Open a YouTube watch page and then open DevTools.
 
 Click the extension toolbar icon to open the local analytics dashboard.
@@ -52,12 +59,17 @@ document.documentElement.dataset.youtubeAdImpressionWatcher
 npm test
 ```
 
+Run from the repository root; it delegates to each workspace. The extension
+tests can also be run directly from `apps/extension` with `npm test`.
+
 ## Layout
 
-- `src/*.ts` — ESM sources (`types.ts` holds the storage/message schema).
-- `popup/popup.ts` — dashboard source; `popup.html`/`popup.css` are copied as-is.
-- `dist/` — gitignored build output (`background.js`, `content.js`, `popup/`).
-- `test/*.test.ts` — `node:test` suites importing `../src/*.ts` directly.
+- `apps/extension/src/*.ts` — ESM sources (`types.ts` holds the storage/message schema).
+- `apps/extension/popup/popup.ts` — dashboard source; `popup.html`/`popup.css` are copied as-is.
+- `apps/extension/dist/` — gitignored build output (`background.js`, `content.js`, `popup/`).
+- `apps/extension/test/*.test.ts` — `node:test` suites importing `../src/*.ts` directly.
+- `apps/server/` — reserved for the local companion server (Feature 1+).
+- `packages/contracts/` — reserved for shared schemas and transport types (Feature 2+).
 
 Bundling note: Chrome content scripts load as classic scripts and reject
 static `import` statements, so `src/content.ts` (+ `ad-state-machine.ts`) is
