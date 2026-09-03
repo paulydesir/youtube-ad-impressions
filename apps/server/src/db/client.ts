@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { sql } from "drizzle-orm";
 import * as schema from "./schema.js";
 
 export type DatabaseClient = BetterSQLite3Database<typeof schema>;
@@ -23,6 +24,17 @@ export function initializeDatabase(databaseFile: string): DatabaseClient {
     ),
   });
   return db;
+}
+
+// Readiness probe for /healthz. Returns false instead of throwing when the
+// database cannot answer.
+export function isDatabaseReady(db: DatabaseClient): boolean {
+  try {
+    db.run(sql`SELECT 1`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Closes the underlying SQLite connection. The `$client` accessor exists at
