@@ -9,17 +9,25 @@
     "build": "tsc --project tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "migrate": "tsx scripts/migrate.ts",
+    "prebuild": "npm run build --workspace @ad-impressions/contracts",
+    "pretest": "npm run build --workspace @ad-impressions/contracts"
   },
   "dependencies": {
+    "@ad-impressions/contracts": "0.1.0",
+    "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.4.1",
     "@types/supertest": "^6.0.3",
+    "drizzle-kit": "^0.31.10",
     "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
