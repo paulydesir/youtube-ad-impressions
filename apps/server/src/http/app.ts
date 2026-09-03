@@ -6,6 +6,7 @@ import express, {
   type Response,
 } from "express";
 import { isDatabaseReady, type DatabaseClient } from "../db/client.js";
+import { createMcpRouter } from "../mcp/router.js";
 import { createImpressionsRouter } from "./impressions.js";
 
 export interface AppOptions {
@@ -49,6 +50,8 @@ export function createApp(options: AppOptions): Express {
   });
 
   app.use("/api/v1/impressions", createImpressionsRouter(options.db, options.ingestToken));
+
+  app.use("/mcp", createMcpRouter(options.db));
 
   app.use((_req, res) => {
     res.status(404).json({ error: "not_found" });
