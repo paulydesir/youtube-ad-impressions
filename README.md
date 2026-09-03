@@ -51,6 +51,8 @@ npm test
   version from the active overlay.
 - Marks an impression when its skip button is clicked.
 - Commits completed impressions to the `impressions` store in `AdTrackerDB`.
+- Gives every impression and ad pod a client-generated UUID so records can be
+  synchronized idempotently without relying on the browser-local integer key.
 - Tracks non-ad playback time to calculate ads per watch hour.
 - Shows impression count, total ad time, skip rate, advertiser rankings, and
   recent history in the extension popup.
@@ -60,3 +62,16 @@ npm test
 
 The actual advertiser landing URL is not available in the observed DOM; the
 extension stores the displayed advertiser domain instead.
+
+## Impression schema
+
+New records use the versioned `AdImpressionV1` contract built in
+`src/impression-record.js`. Stable identity and timing fields include
+`event_id`, `pod_id`, `schema_version`, `started_at`, and `ended_at`. The local
+IndexedDB `id` remains an auto-incrementing implementation detail.
+
+Database version 3 replaces the ambiguous `timestamp` and `advertiser_url`
+indexes with `started_at` and `advertiser_domain`, and adds a unique
+`event_id` index. Existing version 2 rows are retained and remain readable by
+the dashboard through legacy field fallbacks; they are not assigned invented
+UUIDs after the fact.

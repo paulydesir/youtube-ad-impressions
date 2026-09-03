@@ -42,27 +42,33 @@ function renderRecent(records) {
   }
 
   for (const record of records.slice(0, 10)) {
+    const startedAt = record.started_at || record.timestamp;
     const item = document.createElement("article");
     item.className = "recent-item";
     appendTextElement(
       item,
       "span",
       "name",
-      record.advertiser_name || record.advertiser_url || "Unknown advertiser",
+      record.advertiser_name ||
+        record.advertiser_domain ||
+        record.advertiser_url ||
+        "Unknown advertiser",
     );
     appendTextElement(
       item,
       "span",
       "meta",
-      `${formatDuration(record.duration_ms || 0)}${record.skipped ? " · skipped" : ""}${record.pod_position ? ` · ${record.pod_position}` : ""}`,
+      `${formatDuration(record.duration_ms || 0)}` +
+        `${record.skipped ? " · skipped" : ""}` +
+        `${record.pod_label || record.pod_position ? ` · ${record.pod_label || record.pod_position}` : ""}`,
     );
     const time = appendTextElement(
       item,
       "time",
       "",
-      new Date(record.timestamp).toLocaleString(),
+      new Date(startedAt).toLocaleString(),
     );
-    time.dateTime = record.timestamp;
+    time.dateTime = startedAt;
     container.append(item);
   }
 }

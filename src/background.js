@@ -1,7 +1,7 @@
 importScripts("analytics.js");
 
 const DB_NAME = "AdTrackerDB";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = "impressions";
 const STATS_STORE_NAME = "stats";
 const WATCH_TIME_KEY = "watch_time_ms";
@@ -12,14 +12,30 @@ function openDatabase() {
 
     request.onupgradeneeded = () => {
       const database = request.result;
+      let store;
       if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const store = database.createObjectStore(STORE_NAME, {
+        store = database.createObjectStore(STORE_NAME, {
           keyPath: "id",
           autoIncrement: true,
         });
-        store.createIndex("timestamp", "timestamp");
-        store.createIndex("advertiser_url", "advertiser_url");
-        store.createIndex("host_video_id", "host_video_id");
+      } else {
+        store = request.transaction.objectStore(STORE_NAME);
+      }
+
+      for (const legacyIndex of ["timestamp", "advertiser_url"]) {
+        if (store.indexNames.contains(legacyIndex)) store.deleteIndex(legacyIndex);
+      }
+
+      const indexes = [
+        ["event_id", "event_id", { unique: true }],
+        ["started_at", "started_at"],
+        ["advertiser_domain", "advertiser_domain"],
+        ["host_video_id", "host_video_id"],
+      ];
+      for (const [name, keyPath, options] of indexes) {
+        if (!store.indexNames.contains(name)) {
+          store.createIndex(name, keyPath, options);
+        }
       }
       if (!database.objectStoreNames.contains(STATS_STORE_NAME)) {
         database.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
@@ -98,7 +114,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .then(([records, watchTimeMs]) =>
         sendResponse({
           ok: true,
-          records: records.sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
+          records: records.sort((a, b) =>
+            (b.started_at || b.timestamp || "").localeCompare(
+              a.started_at || a.timestamp || "",
+            ),
+          ),
           analytics: globalThis.YouTubeAdAnalytics.aggregateImpressions(
             records,
             watchTimeMs,

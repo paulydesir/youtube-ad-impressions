@@ -11,7 +11,10 @@
         ? Math.max(0, record.duration_ms)
         : 0;
       const advertiser =
-        record.advertiser_name || record.advertiser_url || "Unknown advertiser";
+        record.advertiser_name ||
+        record.advertiser_domain ||
+        record.advertiser_url ||
+        "Unknown advertiser";
       const current = advertisers.get(advertiser) || {
         name: advertiser,
         impressions: 0,

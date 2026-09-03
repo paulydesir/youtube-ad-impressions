@@ -66,6 +66,10 @@ test("tracks each advertiser-domain change within one ad pod", () => {
   const ends = [];
   const tracker = new DomainImpressionTracker({
     now: () => time,
+    createId: (() => {
+      const ids = ["pod-1", "event-1", "event-2"];
+      return () => ids.shift();
+    })(),
     onStart: (event) => starts.push(event),
     onEnd: (event) => ends.push(event),
   });
@@ -79,17 +83,50 @@ test("tracks each advertiser-domain change within one ad pod", () => {
   tracker.endPod({ reason: "pod-ended" });
 
   assert.deepEqual(
-    starts.map(({ advertiserDomain, impressionIndex }) => ({
+    starts.map(({ advertiserDomain, eventId, podId, podImpressionIndex }) => ({
       advertiserDomain,
-      impressionIndex,
+      eventId,
+      podId,
+      podImpressionIndex,
     })),
     [
-      { advertiserDomain: "datacamp.com", impressionIndex: 1 },
-      { advertiserDomain: "example.org", impressionIndex: 2 },
+      {
+        advertiserDomain: "datacamp.com",
+        eventId: "event-1",
+        podId: "pod-1",
+        podImpressionIndex: 1,
+      },
+      {
+        advertiserDomain: "example.org",
+        eventId: "event-2",
+        podId: "pod-1",
+        podImpressionIndex: 2,
+      },
     ],
   );
   assert.equal(ends.length, 2);
   assert.equal(ends[0].durationMs, 1000);
   assert.equal(ends[0].reason, "advertiser-changed");
+  assert.equal(ends[0].eventId, "event-1");
+  assert.equal(ends[1].podId, "pod-1");
   assert.equal(ends[1].reason, "pod-ended");
+});
+
+test("creates a new pod ID and resets its impression index", () => {
+  const starts = [];
+  const ids = ["pod-1", "event-1", "pod-2", "event-2"];
+  const tracker = new DomainImpressionTracker({
+    createId: () => ids.shift(),
+    onStart: (event) => starts.push(event),
+  });
+
+  tracker.beginPod();
+  tracker.updateDomain("first.example");
+  tracker.endPod();
+  tracker.beginPod();
+  tracker.updateDomain("second.example");
+
+  assert.equal(starts[0].podId, "pod-1");
+  assert.equal(starts[1].podId, "pod-2");
+  assert.equal(starts[1].podImpressionIndex, 1);
 });

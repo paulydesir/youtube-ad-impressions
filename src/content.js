@@ -22,8 +22,17 @@
     return;
   }
 
+  const impressionSchema = globalThis.YouTubeAdImpressionSchema;
+  if (!impressionSchema) {
+    diagnostic.status = "error";
+    diagnostic.error = "impression-record.js did not load";
+    console.error("[YouTube Ad Impressions]", diagnostic.error);
+    return;
+  }
+
   const { AdStateMachine, DomainImpressionTracker, playerIsShowingAd } =
     watcherLibrary;
+  const { buildAdImpressionRecord } = impressionSchema;
 
   let player = null;
   let playerObserver = null;
@@ -50,30 +59,11 @@
   }
 
   function persistImpression(detail, metadata) {
-    const record = {
-      advertiser_name: metadata.advertiserName || metadata.advertiserDomain,
-      advertiser_url: metadata.advertiserDomain,
-      host_video_id: hostVideoId(),
-      timestamp: new Date(detail.startedAtMs).toISOString(),
-      ended_at: new Date(detail.endedAtMs).toISOString(),
-      duration_ms: detail.durationMs,
-      pod_position: metadata.podLabel,
-      pod_index: metadata.podPosition,
-      pod_size: metadata.podSize,
-      impression_index: detail.impressionIndex,
-      skipped: metadata.skipped,
-      skip_clicked_at: metadata.skipClickedAt,
-      skip_available: metadata.skipAvailableAtCapture,
-      ad_headline: metadata.adHeadline,
-      call_to_action: metadata.callToAction,
-      creative_title: metadata.creativeTitle,
-      creative_duration_ms: metadata.creativeDurationMs,
-      muted: metadata.creativeMutedAtCapture,
-      playback_rate: metadata.creativePlaybackRate,
-      avatar_url: metadata.avatarUrl,
-      player_version: metadata.playerVersion,
-      end_reason: detail.reason,
-    };
+    const record = buildAdImpressionRecord({
+      detail,
+      metadata,
+      hostVideoId: hostVideoId(),
+    });
 
     chrome.runtime.sendMessage(
       { type: "record-impression", record },
@@ -157,7 +147,7 @@
   const impressions = new DomainImpressionTracker({
     onStart: (detail) => {
       const metadata = extractAdMetadata();
-      impressionMetadata.set(detail.impressionIndex, {
+      impressionMetadata.set(detail.eventId, {
         ...metadata,
         skipped: false,
         skipClickedAt: null,
@@ -165,10 +155,10 @@
       publish("ad-impression-start", { ...detail, ...metadata });
     },
     onEnd: (detail) => {
-      const metadata = impressionMetadata.get(detail.impressionIndex) || {};
+      const metadata = impressionMetadata.get(detail.eventId) || {};
       publish("ad-impression-end", { ...detail, ...metadata });
       persistImpression(detail, metadata);
-      impressionMetadata.delete(detail.impressionIndex);
+      impressionMetadata.delete(detail.eventId);
     },
   });
 
@@ -215,7 +205,7 @@
     const skipButton = event.target.closest?.(".ytp-skip-ad-button");
     if (!skipButton || !player?.contains(skipButton)) return;
 
-    const metadata = impressionMetadata.get(impressions.impressionIndex);
+    const metadata = impressionMetadata.get(impressions.eventId);
     if (!metadata) return;
     metadata.skipped = true;
     metadata.skipClickedAt = new Date().toISOString();
