@@ -2,3 +2,20 @@ node_modules/
 dist/
 .DS_Store
 *.log
+
+# Local environment files
+.env
+.env.local
+
+# SQLite artifacts (server data lives under apps/server/data/)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Test coverage
+coverage/

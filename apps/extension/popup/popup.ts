@@ -64,6 +64,19 @@ function appendTextElement<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function appendChip(parent: ParentNode, name: string): void {
+  const chip = document.createElement("span");
+  chip.className = "chip";
+  chip.setAttribute("aria-hidden", "true");
+  chip.textContent = (name.trim()[0] ?? "?").toUpperCase();
+  parent.append(chip);
+}
+
 function renderAdvertisers(advertisers: AdvertiserSummary[]): void {
   const list = requireElement<HTMLOListElement>("#advertisers");
   list.replaceChildren();
@@ -74,7 +87,11 @@ function renderAdvertisers(advertisers: AdvertiserSummary[]): void {
 
   for (const advertiser of advertisers.slice(0, 8)) {
     const item = document.createElement("li");
-    appendTextElement(item, "span", "name", advertiser.name);
+    appendChip(item, advertiser.name);
+    const ad = document.createElement("div");
+    ad.className = "ad";
+    appendTextElement(ad, "span", "name", advertiser.name);
+    item.append(ad);
     appendTextElement(
       item,
       "span",
@@ -101,25 +118,27 @@ function renderRecent(records: AdImpressionRecord[]): void {
   for (const record of records.slice(0, 10)) {
     const item = document.createElement("article");
     item.className = "recent-item";
+    const name =
+      record.advertiser_name ?? record.advertiser_url ?? "Unknown advertiser";
+    appendChip(item, name);
+    appendTextElement(item, "span", "name", name);
+    const metaRow = document.createElement("div");
+    metaRow.className = "meta-row";
     appendTextElement(
-      item,
-      "span",
-      "name",
-      record.advertiser_name ?? record.advertiser_url ?? "Unknown advertiser",
-    );
-    appendTextElement(
-      item,
+      metaRow,
       "span",
       "meta",
-      `${formatDuration(record.duration_ms ?? 0)}${record.skipped ? " · skipped" : ""}${record.pod_position ? ` · ${record.pod_position}` : ""}`,
+      `${formatDuration(record.duration_ms ?? 0)}${record.pod_position ? ` · ${record.pod_position}` : ""}`,
     );
+    if (record.skipped) appendTextElement(metaRow, "span", "badge", "Skipped");
     const time = appendTextElement(
-      item,
+      metaRow,
       "time",
       "",
-      new Date(record.timestamp).toLocaleString(),
+      dateFormatter.format(new Date(record.timestamp)),
     );
     time.dateTime = record.timestamp;
+    item.append(metaRow);
     container.append(item);
   }
 }
@@ -170,8 +189,8 @@ function downloadBackup(backup: BackupFile): void {
 function wireBackupControls(): void {
   const backupStatus = requireElement<HTMLElement>("#backup-status");
   const exportButton = requireElement<HTMLButtonElement>("#export");
+  const importTrigger = requireElement<HTMLButtonElement>("#import-trigger");
   const importInput = requireElement<HTMLInputElement>("#import-file");
-  const modeSelect = requireElement<HTMLSelectElement>("#import-mode");
 
   exportButton.addEventListener("click", () => {
     backupStatus.textContent = "Preparing export…";
@@ -188,11 +207,16 @@ function wireBackupControls(): void {
     });
   });
 
+  importTrigger.addEventListener("click", () => importInput.click());
+
   importInput.addEventListener("change", () => {
     const file = importInput.files?.[0];
     importInput.value = "";
     if (!file) return;
-    const mode: ImportMode = modeSelect.value === "replace" ? "replace" : "merge";
+    const checkedMode = document.querySelector<HTMLInputElement>(
+      'input[name="import-mode"]:checked',
+    );
+    const mode: ImportMode = checkedMode?.value === "replace" ? "replace" : "merge";
     backupStatus.textContent = `Importing ${file.name} (${mode})…`;
     file
       .text()

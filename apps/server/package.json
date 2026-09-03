@@ -1,0 +1,7 @@
+{
+  "name": "@ad-impressions/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reserved location for the local companion server (Feature 1)."
+}
