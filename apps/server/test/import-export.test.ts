@@ -80,6 +80,19 @@ describe("importLegacyExport", () => {
     assert.equal((await searchImpressions(db)).length, 1);
   });
 
+  it("preserves extension-owned event and pod UUIDs", async () => {
+    const eventId = "11111111-1111-4111-8111-111111111111";
+    const podId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    await importLegacyExport(
+      db,
+      envelope([legacyRow({ event_id: eventId, pod_id: podId })]),
+    );
+
+    const [row] = await searchImpressions(db);
+    assert.equal(row?.eventId, eventId);
+    assert.equal(row?.podId, podId);
+  });
+
   it("maps legacy pod and advertiser fields onto V1", async () => {
     await importLegacyExport(db, envelope([legacyRow()]));
     const [row] = await searchImpressions(db, { advertiser: "coursera" });
@@ -88,6 +101,32 @@ describe("importLegacyExport", () => {
     assert.equal(row?.podPosition, 1);
     assert.equal(row?.podImpressionIndex, 0);
     assert.ok(row?.eventId.startsWith("legacy-"));
+    assert.equal(row?.podId, `legacy-pod:${row?.eventId}`);
+  });
+
+  it("does not infer shared pods from host video and ad position", async () => {
+    await importLegacyExport(
+      db,
+      envelope([
+        legacyRow({
+          timestamp: "2026-09-01T12:00:00.000Z",
+          pod_index: 1,
+        }),
+        legacyRow({
+          timestamp: "2026-09-01T12:00:30.000Z",
+          pod_index: 2,
+        }),
+        legacyRow({
+          timestamp: "2026-09-02T12:00:00.000Z",
+          pod_index: 1,
+        }),
+      ]),
+    );
+
+    const rows = await searchImpressions(db);
+    assert.equal(rows.length, 3);
+    assert.equal(new Set(rows.map((row) => row.podId)).size, 3);
+    assert.ok(rows.every((row) => row.podId === `legacy-pod:${row.eventId}`));
   });
 
   it("counts invalid rows as rejected without aborting", async () => {

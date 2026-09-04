@@ -22,9 +22,12 @@ export interface AdvertiserStatsFilters {
   limit?: number;
 }
 
-// Compact row: every column except raw_json, which never leaves the database
-// through this repository.
-export type CompactImpression = Omit<typeof adImpressions.$inferSelect, "rawJson">;
+// Compact row: raw_json and the local auto-increment row ID never leave the
+// database. eventId is the portable identity.
+export type CompactImpression = Omit<
+  typeof adImpressions.$inferSelect,
+  "id" | "rawJson"
+>;
 
 export interface AdvertiserStatRow {
   advertiser: string;
@@ -91,7 +94,6 @@ function termCondition(terms: string[]) {
 }
 
 const compactColumns = {
-  id: adImpressions.id,
   eventId: adImpressions.eventId,
   schemaVersion: adImpressions.schemaVersion,
   source: adImpressions.source,

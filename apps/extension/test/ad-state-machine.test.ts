@@ -57,10 +57,22 @@ test("reset closes an active lifecycle", () => {
 
 test("tracks each advertiser-domain change within one ad pod", () => {
   let time = 100;
-  const starts: Array<{ advertiserDomain: string; impressionIndex: number }> = [];
-  const ends: Array<{ durationMs: number; reason: string }> = [];
+  let nextId = 0;
+  const starts: Array<{
+    advertiserDomain: string;
+    impressionIndex: number;
+    eventId: string;
+    podId: string;
+  }> = [];
+  const ends: Array<{
+    durationMs: number;
+    reason: string;
+    eventId: string;
+    podId: string;
+  }> = [];
   const tracker = new DomainImpressionTracker({
     now: () => time,
+    createId: () => `id-${++nextId}`,
     onStart: (event) => starts.push(event),
     onEnd: (event) => ends.push(event),
   });
@@ -87,4 +99,26 @@ test("tracks each advertiser-domain change within one ad pod", () => {
   assert.equal(ends[0]?.durationMs, 1000);
   assert.equal(ends[0]?.reason, "advertiser-changed");
   assert.equal(ends[1]?.reason, "pod-ended");
+  assert.deepEqual(starts.map((event) => event.eventId), ["id-2", "id-3"]);
+  assert.deepEqual(ends.map((event) => event.eventId), ["id-2", "id-3"]);
+  assert.ok(starts.every((event) => event.podId === "id-1"));
+  assert.ok(ends.every((event) => event.podId === "id-1"));
+});
+
+test("assigns a different UUID identity to each ad pod", () => {
+  let nextId = 0;
+  const podIds: string[] = [];
+  const tracker = new DomainImpressionTracker({
+    createId: () => `id-${++nextId}`,
+    onStart: (event) => podIds.push(event.podId),
+  });
+
+  tracker.beginPod();
+  tracker.updateDomain("first.example");
+  tracker.endPod();
+  tracker.beginPod();
+  tracker.updateDomain("second.example");
+  tracker.endPod();
+
+  assert.deepEqual(podIds, ["id-1", "id-3"]);
 });

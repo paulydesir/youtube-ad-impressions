@@ -12,6 +12,7 @@ import { createImpressionsRouter } from "./impressions.js";
 export interface AppOptions {
   db: DatabaseClient;
   ingestToken: string;
+  requestLog?: (message: string) => void;
 }
 
 // Malformed JSON bodies must produce a stable JSON error, not Express's
@@ -38,6 +39,18 @@ const jsonErrorHandler: ErrorRequestHandler = (
 export function createApp(options: AppOptions): Express {
   const app = express();
   app.disable("x-powered-by");
+  if (options.requestLog) {
+    app.use((req, res, next) => {
+      const startedAt = performance.now();
+      res.on("finish", () => {
+        const durationMs = Math.round(performance.now() - startedAt);
+        options.requestLog?.(
+          `${req.method} ${req.path} ${res.statusCode} ${durationMs}ms`,
+        );
+      });
+      next();
+    });
+  }
   // 500 records of ~1KB each fit comfortably; the default 100kb would not.
   app.use(express.json({ limit: "5mb" }));
 

@@ -77,12 +77,16 @@ export class AdStateMachine {
 }
 
 export interface ImpressionStartDetail extends TransitionContext {
+  eventId: string;
+  podId: string;
   advertiserDomain: string;
   impressionIndex: number;
   startedAtMs: number;
 }
 
 export interface ImpressionEndDetail extends TransitionContext {
+  eventId: string;
+  podId: string;
   advertiserDomain: string;
   impressionIndex: number;
   startedAtMs: number;
@@ -95,26 +99,37 @@ export interface DomainImpressionTrackerOptions {
   onStart?: (detail: ImpressionStartDetail) => void;
   onEnd?: (detail: ImpressionEndDetail) => void;
   now?: () => number;
+  createId?: () => string;
 }
 
 export class DomainImpressionTracker {
   private readonly onStart?: (detail: ImpressionStartDetail) => void;
   private readonly onEnd?: (detail: ImpressionEndDetail) => void;
   private readonly now: () => number;
+  private readonly createId: () => string;
   private podActive = false;
+  private podId: string | null = null;
+  private eventId: string | null = null;
   private domain: string | null = null;
   private startedAtMs: number | null = null;
   impressionIndex = 0;
 
-  constructor({ onStart, onEnd, now = () => Date.now() }: DomainImpressionTrackerOptions) {
+  constructor({
+    onStart,
+    onEnd,
+    now = () => Date.now(),
+    createId = () => crypto.randomUUID(),
+  }: DomainImpressionTrackerOptions) {
     this.onStart = onStart;
     this.onEnd = onEnd;
     this.now = now;
+    this.createId = createId;
   }
 
   beginPod(): void {
     this.endPod({ reason: "pod-restarted" });
     this.podActive = true;
+    this.podId = this.createId();
     this.impressionIndex = 0;
   }
 
@@ -125,8 +140,10 @@ export class DomainImpressionTracker {
     if (nextDomain === this.domain) return;
 
     const transitionAtMs = this.now();
-    if (this.domain) {
+    if (this.domain && this.eventId && this.podId) {
       this.onEnd?.({
+        eventId: this.eventId,
+        podId: this.podId,
         advertiserDomain: this.domain,
         impressionIndex: this.impressionIndex,
         startedAtMs: this.startedAtMs ?? transitionAtMs,
@@ -139,10 +156,13 @@ export class DomainImpressionTracker {
 
     this.domain = nextDomain;
     this.startedAtMs = nextDomain ? transitionAtMs : null;
+    this.eventId = nextDomain ? this.createId() : null;
 
-    if (nextDomain) {
+    if (nextDomain && this.eventId && this.podId) {
       this.impressionIndex += 1;
       this.onStart?.({
+        eventId: this.eventId,
+        podId: this.podId,
         advertiserDomain: nextDomain,
         impressionIndex: this.impressionIndex,
         startedAtMs: transitionAtMs,
@@ -154,6 +174,8 @@ export class DomainImpressionTracker {
   endPod(context: TransitionContext = {}): void {
     if (this.domain) this.updateDomain(null, context);
     this.podActive = false;
+    this.podId = null;
+    this.eventId = null;
     this.domain = null;
     this.startedAtMs = null;
   }

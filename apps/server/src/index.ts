@@ -34,6 +34,10 @@ function main(): void {
   const app = createApp({
     db,
     ingestToken: config.INGEST_API_TOKEN,
+    requestLog:
+      config.LOG_LEVEL === "debug" || config.LOG_LEVEL === "info"
+        ? (message) => console.info(`[Ad Impressions Server] ${message}`)
+        : undefined,
   });
   const server = app.listen(config.PORT, config.HOST, () => {
     console.info(`Listening on http://${config.HOST}:${config.PORT}`);

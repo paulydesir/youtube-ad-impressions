@@ -155,6 +155,7 @@ describe("MCP tools", () => {
     );
     assert.ok(impressions.every((row) => !("rawJson" in row && "raw_json" in row)));
     assert.ok(impressions.every((row) => !("rawJson" in row)));
+    assert.ok(impressions.every((row) => !("id" in row)));
   });
 
   it("answers frequency questions via get_advertiser_stats", async () => {

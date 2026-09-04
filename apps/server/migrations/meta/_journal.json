@@ -8,6 +8,13 @@
       "when": 1788455729615,
       "tag": "0000_simple_nicolaos",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788462000000,
+      "tag": "0001_fix_legacy_pod_ids",
+      "breakpoints": true
     }
   ]
 }
