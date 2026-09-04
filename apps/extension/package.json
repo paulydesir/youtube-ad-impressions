@@ -4,12 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "pretypecheck": "npm run build --workspace @ad-impressions/contracts",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && node scripts/build.mjs",
+    "pretest": "npm run build --workspace @ad-impressions/contracts",
     "test": "node --test test/**/*.test.ts",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
+    "@ad-impressions/contracts": "0.1.0",
     "@types/chrome": "^0.2.8",
     "@types/node": "^26.4.1",
     "esbuild": "^0.28.2",

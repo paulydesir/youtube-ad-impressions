@@ -35,13 +35,10 @@ function legacyEventId(row: Record<string, unknown>): string {
   return `legacy-${digest}`;
 }
 
-function legacyPodId(row: Record<string, unknown>, eventId: string): string {
-  const host = typeof row["host_video_id"] === "string" ? row["host_video_id"] : null;
-  const podIndex = typeof row["pod_index"] === "number" ? row["pod_index"] : null;
-  if (host !== null || podIndex !== null) {
-    return `legacy-pod:${host ?? "unknown"}:${podIndex ?? "unknown"}`;
-  }
-  return `legacy-pod:${eventId.slice("legacy-".length, "legacy-".length + 12)}`;
+function legacyPodId(eventId: string): string {
+  // Legacy exports contain an ad's position within a pod, but no trustworthy
+  // shared pod boundary. A unique event-derived ID avoids false grouping.
+  return `legacy-pod:${eventId}`;
 }
 
 function asStringOrNull(value: unknown): string | null {
@@ -56,11 +53,18 @@ function asBooleanOrNull(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
 // Maps one legacy IndexedDB row onto the V1 contract. The legacy
 // `pod_position` string ("1 of 2") is a display label, so it becomes
 // `pod_label`; the numeric `pod_index` becomes `pod_position`.
 function normalizeLegacyRow(row: Record<string, unknown>): AdImpressionV1 {
-  const eventId = legacyEventId(row);
+  // New extension exports own their UUID identities. Deterministic legacy
+  // identities remain only as a compatibility fallback for older exports.
+  const eventId = nonEmptyString(row["event_id"]) ?? legacyEventId(row);
+  const podId = nonEmptyString(row["pod_id"]) ?? legacyPodId(eventId);
   const skipped = row["skipped"];
   if (typeof skipped !== "boolean") {
     throw new Error("Legacy row is missing required boolean skipped.");
@@ -79,7 +83,7 @@ function normalizeLegacyRow(row: Record<string, unknown>): AdImpressionV1 {
     call_to_action: asStringOrNull(row["call_to_action"]),
     creative_title: asStringOrNull(row["creative_title"]),
     creative_duration_ms: asNumberOrNull(row["creative_duration_ms"]),
-    pod_id: legacyPodId(row, eventId),
+    pod_id: podId,
     pod_label: asStringOrNull(row["pod_position"]),
     pod_position: asNumberOrNull(row["pod_index"]),
     pod_size: asNumberOrNull(row["pod_size"]),

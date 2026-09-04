@@ -26,10 +26,10 @@ afterEach(() => {
   }
 });
 
-function testApp() {
+function testApp(requestLog?: (message: string) => void) {
   const dir = mkdtempSync(join(tmpdir(), "ad-impressions-foundation-"));
   db = initializeDatabase(join(dir, "test.sqlite"));
-  return createApp({ db, ingestToken: TOKEN });
+  return createApp({ db, ingestToken: TOKEN, requestLog });
 }
 
 describe("GET /healthz", () => {
@@ -45,6 +45,17 @@ describe("GET /healthz", () => {
     const response = await request(app).get("/healthz");
     assert.equal(response.status, 503);
     assert.deepEqual(response.body, { ok: false, database: "unavailable" });
+  });
+
+  it("logs request metadata without payloads", async () => {
+    const messages: string[] = [];
+    const response = await request(testApp((message) => messages.push(message))).get(
+      "/healthz",
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(messages.length, 1);
+    assert.match(messages[0] ?? "", /^GET \/healthz 200 \d+ms$/);
   });
 });
 

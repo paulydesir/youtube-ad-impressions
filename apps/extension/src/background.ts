@@ -10,13 +10,28 @@ import {
 } from "./backup.ts";
 import type { BackupFile, ImportMode, StoredImpression } from "./backup.ts";
 import { WATCH_TIME_KEY } from "./backup.ts";
+import {
+  createCompanionForwarder,
+  INGEST_TOKEN_STORAGE_KEY,
+  persistThenForward,
+} from "./server-forwarding.ts";
 import type { AdImpressionRecord, ExtensionMessage } from "./types.ts";
 import { isExtensionMessage } from "./types.ts";
 
 const DB_NAME = "AdTrackerDB";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = "impressions";
 const STATS_STORE_NAME = "stats";
+
+const forwardToLocalServer = createCompanionForwarder({
+  getToken: async () => {
+    const values = await chrome.storage.local.get(INGEST_TOKEN_STORAGE_KEY);
+    const token = values[INGEST_TOKEN_STORAGE_KEY];
+    return typeof token === "string" && token.length > 0 ? token : null;
+  },
+  info: (message) => console.info(message),
+  warn: (message) => console.warn(message),
+});
 
 interface WatchTimeRow {
   key: string;
@@ -35,14 +50,21 @@ function openDatabase(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = () => {
       const database = request.result;
+      let store: IDBObjectStore;
       if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const store = database.createObjectStore(STORE_NAME, {
+        store = database.createObjectStore(STORE_NAME, {
           keyPath: "id",
           autoIncrement: true,
         });
         store.createIndex("timestamp", "timestamp");
         store.createIndex("advertiser_url", "advertiser_url");
         store.createIndex("host_video_id", "host_video_id");
+      } else {
+        store = request.transaction!.objectStore(STORE_NAME);
+      }
+      if (!store.indexNames.contains("event_id")) {
+        // Missing keys on legacy rows are not indexed. New UUIDs are unique.
+        store.createIndex("event_id", "event_id", { unique: true });
       }
       if (!database.objectStoreNames.contains(STATS_STORE_NAME)) {
         database.createObjectStore(STATS_STORE_NAME, { keyPath: "key" });
@@ -73,8 +95,30 @@ function withStore<T>(
   );
 }
 
-function addImpression(record: AdImpressionRecord): Promise<IDBValidKey> {
-  return withStore("readwrite", (store) => store.add(record));
+async function addImpression(record: AdImpressionRecord): Promise<IDBValidKey> {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    const request = transaction.objectStore(STORE_NAME).add(record);
+    let key!: IDBValidKey;
+
+    request.onsuccess = () => {
+      key = request.result;
+    };
+    request.onerror = () => reject(idbError(request));
+    transaction.oncomplete = () => {
+      database.close();
+      resolve(key);
+    };
+    transaction.onerror = () => {
+      database.close();
+      reject(transaction.error ?? idbError(request));
+    };
+    transaction.onabort = () => {
+      database.close();
+      reject(transaction.error ?? idbError(request));
+    };
+  });
 }
 
 function getImpressions(): Promise<AdImpressionRecord[]> {
@@ -83,7 +127,7 @@ function getImpressions(): Promise<AdImpressionRecord[]> {
   );
 }
 
-/** Same rows but keeping the autoIncrement `id` key, for backups. */
+/** Stored rows include the local key, which backup serialization strips. */
 function getStoredImpressions(): Promise<StoredImpression[]> {
   return withStore("readonly", (store) =>
     store.getAll() as IDBRequest<StoredImpression[]>,
@@ -142,7 +186,7 @@ async function exportBackup(): Promise<BackupFile> {
   return buildBackupFile(impressions, watchTimeMs);
 }
 
-/** Replace mode: clear the store, then restore every row (keeping ids). */
+/** Replace mode: clear the store, then restore every portable row. */
 function replaceAll(
   database: IDBDatabase,
   records: StoredImpression[],
@@ -155,7 +199,7 @@ function replaceAll(
     transaction.onabort = () => reject(transactionError(transaction));
     const impressions = transaction.objectStore(STORE_NAME);
     impressions.clear().onsuccess = () => {
-      for (const record of records) impressions.put(record);
+      for (const { id: _localId, ...record } of records) impressions.put(record);
     };
     transaction
       .objectStore(STATS_STORE_NAME)
@@ -290,8 +334,13 @@ function handleMessage(
   sendResponse: (response: MessageResponse) => void,
 ): boolean {
   if (message.type === "record-impression") {
-    addImpression(message.record)
-      .then((id) => sendResponse({ ok: true, id }))
+    persistThenForward(message.record, addImpression, forwardToLocalServer)
+      .then((id) => {
+        console.info(
+          `[YouTube Ad Impressions] stored impression ${message.record.event_id} in IndexedDB`,
+        );
+        sendResponse({ ok: true, id });
+      })
       .catch((error: unknown) =>
         sendResponse({ ok: false, error: toErrorMessage(error) }),
       );

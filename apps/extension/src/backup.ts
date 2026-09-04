@@ -7,7 +7,7 @@
 //   "formatVersion": 1,
 //   "exportedAt": "2026-09-03T14:57:35.590Z",
 //   "database": "AdTrackerDB",
-//   "impressions": [ { ...AdImpressionRecord, "id"?: number }, ... ],
+//   "impressions": [ { ...AdImpressionRecord }, ... ],
 //   "stats": [ { "key": "watch_time_ms", "value": 37453103 } ]
 // }
 import type { AdImpressionRecord } from "./types.ts";
@@ -16,7 +16,7 @@ export const BACKUP_FORMAT_VERSION = 1;
 export const BACKUP_DATABASE_NAME = "AdTrackerDB";
 export const WATCH_TIME_KEY = "watch_time_ms";
 
-/** A stored impression row, including the autoIncrement key when exported. */
+/** A stored row; id is accepted from legacy backups but omitted from new ones. */
 export type StoredImpression = AdImpressionRecord & { id?: number };
 
 export interface BackupStatRow {
@@ -76,6 +76,8 @@ export function isStoredImpression(value: unknown): value is StoredImpression {
     isStringOrNull(value["avatar_url"]) &&
     isStringOrNull(value["player_version"]) &&
     typeof value["end_reason"] === "string" &&
+    (value["event_id"] === undefined || typeof value["event_id"] === "string") &&
+    (value["pod_id"] === undefined || typeof value["pod_id"] === "string") &&
     (value["id"] === undefined || typeof value["id"] === "number")
   );
 }
@@ -136,7 +138,9 @@ export function buildBackupFile(
     formatVersion: BACKUP_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
     database: BACKUP_DATABASE_NAME,
-    impressions,
+    // IndexedDB's auto-increment key is local implementation detail. Portable
+    // identity comes exclusively from event_id.
+    impressions: impressions.map(({ id: _localId, ...record }) => record),
     stats: [{ key: WATCH_TIME_KEY, value: watchTimeMs }],
   };
 }
@@ -147,6 +151,7 @@ export function backupWatchTimeMs(file: BackupFile): number {
 
 /** Stable identity for merge-mode dedupe across re-imports of one export. */
 export function dedupeKey(record: StoredImpression): string {
+  if (record.event_id) return `event:${record.event_id}`;
   return [
     record.timestamp,
     record.advertiser_url ?? "",

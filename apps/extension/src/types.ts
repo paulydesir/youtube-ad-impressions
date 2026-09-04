@@ -2,6 +2,10 @@
 // Field names use the snake_case storage schema (IndexedDB `impressions` store).
 
 export interface AdImpressionRecord {
+  /** Present on all newly captured rows; absent only on legacy backups/rows. */
+  event_id?: string;
+  /** Shared by impressions observed within one ad break; absent on legacy rows. */
+  pod_id?: string;
   advertiser_name: string | null;
   advertiser_url: string | null;
   host_video_id: string | null;
@@ -26,9 +30,14 @@ export interface AdImpressionRecord {
   end_reason: string;
 }
 
+export interface IdentifiedAdImpressionRecord extends AdImpressionRecord {
+  event_id: string;
+  pod_id: string;
+}
+
 export interface RecordImpressionMessage {
   type: "record-impression";
-  record: AdImpressionRecord;
+  record: IdentifiedAdImpressionRecord;
 }
 
 export interface GetDashboardMessage {

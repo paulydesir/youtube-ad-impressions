@@ -11,7 +11,10 @@ import type {
   ImpressionStartDetail,
   TransitionContext,
 } from "./ad-state-machine.ts";
-import type { AdImpressionRecord, ExtensionMessage } from "./types.ts";
+import type {
+  ExtensionMessage,
+  IdentifiedAdImpressionRecord,
+} from "./types.ts";
 
 const EVENT_NAME = "youtube-ad-impression-transition";
 const PLAYER_SELECTOR = "#movie_player";
@@ -71,6 +74,36 @@ let domainTimer: number | undefined;
 let pendingWatchMs = 0;
 let lastWatchTickMs: number | null = null;
 const impressionMetadata = new Map<number, StoredMetadata>();
+let runtimeUnavailableLogged = false;
+
+function warnRuntimeUnavailable(): void {
+  if (runtimeUnavailableLogged) return;
+  runtimeUnavailableLogged = true;
+  console.warn(
+    "[YouTube Ad Impressions] extension context unavailable; reload this YouTube tab after reloading the extension",
+  );
+}
+
+function sendExtensionMessage(
+  message: ExtensionMessage,
+  onResponse?: (response: unknown) => void,
+): void {
+  try {
+    chrome.runtime.sendMessage(message, (response: unknown) => {
+      if (chrome.runtime.lastError) {
+        warnRuntimeUnavailable();
+        return;
+      }
+      runtimeUnavailableLogged = false;
+      onResponse?.(response);
+    });
+  } catch {
+    // Reloading an unpacked extension invalidates content scripts that are
+    // already running in open tabs. In that state sendMessage throws before a
+    // callback (and runtime.lastError) can report the problem.
+    warnRuntimeUnavailable();
+  }
+}
 
 function hostVideoId(): string | null {
   return new URL(location.href).searchParams.get("v");
@@ -92,7 +125,9 @@ function persistImpression(
   detail: ImpressionEndDetail,
   metadata: Partial<StoredMetadata>,
 ): void {
-  const record: AdImpressionRecord = {
+  const record: IdentifiedAdImpressionRecord = {
+    event_id: detail.eventId,
+    pod_id: detail.podId,
     advertiser_name: metadata.advertiserName ?? metadata.advertiserDomain ?? null,
     advertiser_url: metadata.advertiserDomain ?? null,
     host_video_id: hostVideoId(),
@@ -118,13 +153,8 @@ function persistImpression(
   };
 
   const message: ExtensionMessage = { type: "record-impression", record };
-  chrome.runtime.sendMessage(message, (response: { ok?: boolean } | undefined) => {
-    if (chrome.runtime.lastError) {
-      console.warn(
-        "[YouTube Ad Impressions] storage unavailable; reload this tab after reloading the extension",
-      );
-      return;
-    }
+  sendExtensionMessage(message, (value) => {
+    const response = value as { ok?: boolean } | undefined;
     if (!response?.ok) {
       console.error("[YouTube Ad Impressions] failed to save impression", response);
     }
@@ -136,9 +166,7 @@ function flushWatchTime(): void {
   const milliseconds = Math.round(pendingWatchMs);
   pendingWatchMs = 0;
   const message: ExtensionMessage = { type: "add-watch-time", milliseconds };
-  chrome.runtime.sendMessage(message, () => {
-    void chrome.runtime.lastError;
-  });
+  sendExtensionMessage(message);
 }
 
 function sampleWatchTime(): void {

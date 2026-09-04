@@ -10,8 +10,23 @@ export const searchAdImpressionsInputShape = {
       "Case-insensitive substring match against observed advertiser name and domain.",
     ),
   terms: z
-    .array(z.string())
-    .optional()
+    .preprocess(
+      (value) => {
+        if (value === undefined || value === null) return undefined;
+        if (typeof value === "string") return value.trim() ? [value] : undefined;
+        if (Array.isArray(value)) return value;
+        // Some Inspector form states submit empty objects or keyed objects
+        // (e.g. {} or {"0": "foo"}) instead of arrays.
+        if (typeof value === "object") {
+          const values = Object.values(value as Record<string, unknown>).filter(
+            (entry): entry is string => typeof entry === "string",
+          );
+          return values.length > 0 ? values : undefined;
+        }
+        return value;
+      },
+      z.array(z.string()).optional(),
+    )
     .describe(
       "Case-insensitive lexical match (OR semantics) across advertiser, headline, CTA, and creative title.",
     ),
@@ -92,7 +107,6 @@ export type GetAdvertiserOverviewInput = {
 // Structured output schemas. Compact impression rows deliberately exclude
 // raw_json, avatar URLs, and player metadata — those never leave the database.
 const impressionSchema = z.object({
-  id: z.number(),
   eventId: z.string(),
   schemaVersion: z.number(),
   source: z.string(),

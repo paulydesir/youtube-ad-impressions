@@ -38,7 +38,12 @@ function sampleImpression(overrides: Partial<StoredImpression> = {}): StoredImpr
 }
 
 test("round-trips a backup file", () => {
-  const backup = buildBackupFile([sampleImpression()], 37453103);
+  const eventId = "11111111-1111-4111-8111-111111111111";
+  const podId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const backup = buildBackupFile(
+    [sampleImpression({ event_id: eventId, pod_id: podId })],
+    37453103,
+  );
   const parsed = parseBackupFile(JSON.parse(JSON.stringify(backup)));
 
   assert.equal(parsed.ok, true);
@@ -46,6 +51,9 @@ test("round-trips a backup file", () => {
   assert.equal(parsed.file.formatVersion, 1);
   assert.equal(parsed.file.impressions.length, 1);
   assert.equal(parsed.file.impressions[0]?.advertiser_url, "jobs.fidelity.com");
+  assert.equal(parsed.file.impressions[0]?.event_id, eventId);
+  assert.equal(parsed.file.impressions[0]?.pod_id, podId);
+  assert.equal(parsed.file.impressions[0]?.id, undefined);
   assert.equal(backupWatchTimeMs(parsed.file), 37453103);
 });
 
@@ -71,4 +79,16 @@ test("dedupe keys ignore volatile fields but separate distinct ads", () => {
 
   assert.equal(dedupeKey(base), dedupeKey(reskipped));
   assert.notEqual(dedupeKey(base), dedupeKey(other));
+});
+
+test("dedupe keys prefer an extension-owned event ID", () => {
+  const eventId = "11111111-1111-4111-8111-111111111111";
+  const first = sampleImpression({ event_id: eventId });
+  const changed = sampleImpression({
+    event_id: eventId,
+    timestamp: "2026-09-02T12:00:00.000Z",
+    duration_ms: 30_000,
+  });
+
+  assert.equal(dedupeKey(first), dedupeKey(changed));
 });
