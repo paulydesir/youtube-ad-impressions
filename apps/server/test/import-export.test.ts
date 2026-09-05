@@ -10,6 +10,7 @@ import {
 } from "../src/db/client.js";
 import { importLegacyExport } from "../src/import/legacy-import.js";
 import { searchImpressions } from "../src/repositories/impressions.js";
+import { createSqliteStore, type ImpressionStore } from "../src/repositories/store.js";
 
 function legacyRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -50,10 +51,12 @@ function envelope(impressions: unknown[]): Record<string, unknown> {
 }
 
 let db: DatabaseClient;
+let sqliteStore: ImpressionStore;
 
 beforeEach(() => {
   const dir = mkdtempSync(join(tmpdir(), "ad-impressions-import-"));
   db = initializeDatabase(join(dir, "test.sqlite"));
+  sqliteStore = createSqliteStore(db);
 });
 
 afterEach(() => {
@@ -63,7 +66,7 @@ afterEach(() => {
 describe("importLegacyExport", () => {
   it("imports rows and ignores the stats record", async () => {
     const summary = await importLegacyExport(
-      db,
+      sqliteStore,
       envelope([legacyRow(), { ...legacyRow(), timestamp: "2026-09-02T12:00:00.000Z" }]),
     );
     assert.deepEqual(summary, { accepted: 2, duplicates: 0, rejected: 0 });
@@ -72,10 +75,10 @@ describe("importLegacyExport", () => {
 
   it("is repeat-safe with deterministic event IDs", async () => {
     const data = envelope([{ ...legacyRow(), id: 1 }, { ...legacyRow(), id: 999 }]);
-    const first = await importLegacyExport(db, data);
+    const first = await importLegacyExport(sqliteStore, data);
     // Same content under a different IndexedDB id is the same observation.
     assert.deepEqual(first, { accepted: 1, duplicates: 1, rejected: 0 });
-    const second = await importLegacyExport(db, data);
+    const second = await importLegacyExport(sqliteStore, data);
     assert.deepEqual(second, { accepted: 0, duplicates: 2, rejected: 0 });
     assert.equal((await searchImpressions(db)).length, 1);
   });
@@ -84,7 +87,7 @@ describe("importLegacyExport", () => {
     const eventId = "11111111-1111-4111-8111-111111111111";
     const podId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     await importLegacyExport(
-      db,
+      sqliteStore,
       envelope([legacyRow({ event_id: eventId, pod_id: podId })]),
     );
 
@@ -94,7 +97,7 @@ describe("importLegacyExport", () => {
   });
 
   it("maps legacy pod and advertiser fields onto V1", async () => {
-    await importLegacyExport(db, envelope([legacyRow()]));
+    await importLegacyExport(sqliteStore, envelope([legacyRow()]));
     const [row] = await searchImpressions(db, { advertiser: "coursera" });
     assert.equal(row?.advertiserDomain, "coursera.org");
     assert.equal(row?.podLabel, "1 of 2");
@@ -106,7 +109,7 @@ describe("importLegacyExport", () => {
 
   it("does not infer shared pods from host video and ad position", async () => {
     await importLegacyExport(
-      db,
+      sqliteStore,
       envelope([
         legacyRow({
           timestamp: "2026-09-01T12:00:00.000Z",
@@ -131,15 +134,15 @@ describe("importLegacyExport", () => {
 
   it("counts invalid rows as rejected without aborting", async () => {
     const summary = await importLegacyExport(
-      db,
+      sqliteStore,
       envelope([legacyRow(), { advertiser_name: 42 }, "not-an-object"]),
     );
     assert.deepEqual(summary, { accepted: 1, duplicates: 0, rejected: 2 });
   });
 
   it("rejects unsupported envelopes", async () => {
-    await assert.rejects(importLegacyExport(db, envelope([]).impressions), /JSON object/);
-    await assert.rejects(importLegacyExport(db, { formatVersion: 2, impressions: [] }), /formatVersion/);
-    await assert.rejects(importLegacyExport(db, { formatVersion: 1 }), /impressions/);
+    await assert.rejects(importLegacyExport(sqliteStore, envelope([]).impressions), /JSON object/);
+    await assert.rejects(importLegacyExport(sqliteStore, { formatVersion: 2, impressions: [] }), /formatVersion/);
+    await assert.rejects(importLegacyExport(sqliteStore, { formatVersion: 1 }), /impressions/);
   });
 });

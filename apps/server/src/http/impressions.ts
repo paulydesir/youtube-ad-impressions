@@ -1,8 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { toAdImpressionV1 } from "@ad-impressions/contracts";
 import { ZodError } from "zod";
-import type { DatabaseClient } from "../db/client.js";
-import { insertImpression } from "../repositories/impressions.js";
+import type { ImpressionStore } from "../repositories/store.js";
 import { requireIngestToken } from "./auth.js";
 
 const MAX_BATCH_SIZE = 500;
@@ -18,7 +17,11 @@ function validationMessage(error: ZodError): string {
     .join("; ");
 }
 
-export function createImpressionsRouter(db: DatabaseClient, ingestToken: string): Router {
+export function createImpressionsRouter(
+  store: ImpressionStore,
+  ingestToken: string,
+  log: (message: string) => void = console.info,
+): Router {
   const router = Router();
   router.use(requireIngestToken(ingestToken));
 
@@ -36,7 +39,9 @@ export function createImpressionsRouter(db: DatabaseClient, ingestToken: string)
       });
       return;
     }
-    const { status, eventId } = await insertImpression(db, record, rawJson);
+    const { status, eventId } = await store.insertImpression(record, rawJson);
+    // DB write confirmation: status + portable identity only, never the body.
+    log(`[ingest] ${status} event_id=${eventId}`);
     if (status === "duplicate") {
       res.status(200).json({ event_id: eventId, duplicate: true });
       return;
@@ -64,7 +69,7 @@ export function createImpressionsRouter(db: DatabaseClient, ingestToken: string)
     for (let index = 0; index < req.body.length; index += 1) {
       try {
         const { record, rawJson } = toAdImpressionV1(req.body[index]);
-        const { status } = await insertImpression(db, record, rawJson);
+        const { status } = await store.insertImpression(record, rawJson);
         if (status === "duplicate") duplicates += 1;
         else accepted += 1;
       } catch (error) {
@@ -75,6 +80,7 @@ export function createImpressionsRouter(db: DatabaseClient, ingestToken: string)
       }
     }
     res.status(200).json({ accepted, duplicates, rejected: errors.length, errors });
+    log(`[ingest] batch size=${req.body.length} accepted=${accepted} duplicates=${duplicates} rejected=${errors.length}`);
   });
 
   return router;

@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "migrate": "tsx scripts/migrate.ts",
+    "migrate:pg": "tsx scripts/migrate-pg.ts",
+    "db:generate-pg": "drizzle-kit generate --config=drizzle.pg.config.ts",
     "import": "tsx scripts/import-export.ts",
     "prebuild": "npm run build --workspace @ad-impressions/contracts",
     "pretest": "npm run build --workspace @ad-impressions/contracts"
@@ -22,12 +24,14 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "pg": "^8.23.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.4.1",
+    "@types/pg": "^8.23.1",
     "@types/supertest": "^6.0.3",
     "drizzle-kit": "^0.31.10",
     "supertest": "^7.2.2",

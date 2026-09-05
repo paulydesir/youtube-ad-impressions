@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { adImpressionV1Schema, type AdImpressionV1 } from "@ad-impressions/contracts";
-import type { DatabaseClient } from "../db/client.js";
-import { insertImpression } from "../repositories/impressions.js";
+import type { ImpressionStore } from "../repositories/store.js";
 
 export interface LegacyImportSummary {
   accepted: number;
@@ -106,7 +105,7 @@ function normalizeLegacyRow(row: Record<string, unknown>): AdImpressionV1 {
 // MVP. Safe to run repeatedly: deterministic legacy event IDs make re-imports
 // report duplicates instead of inserting new rows.
 export async function importLegacyExport(
-  db: DatabaseClient,
+  store: ImpressionStore,
   data: unknown,
 ): Promise<LegacyImportSummary> {
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
@@ -129,7 +128,7 @@ export async function importLegacyExport(
         throw new Error("Impression entry must be an object.");
       }
       const record = normalizeLegacyRow(item as Record<string, unknown>);
-      const { status } = await insertImpression(db, record, JSON.stringify(item));
+      const { status } = await store.insertImpression(record, JSON.stringify(item));
       if (status === "duplicate") duplicates += 1;
       else accepted += 1;
     } catch {

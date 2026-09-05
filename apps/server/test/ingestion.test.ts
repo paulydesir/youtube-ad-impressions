@@ -8,9 +8,11 @@ import type { Express } from "express";
 import {
   closeDatabase,
   initializeDatabase,
+  isDatabaseReady,
   type DatabaseClient,
 } from "../src/db/client.js";
 import { createApp } from "../src/http/app.js";
+import { createSqliteStore } from "../src/repositories/store.js";
 
 const TOKEN = "ingest-test-token";
 const MCP_TOKEN = "mcp-test-token";
@@ -47,7 +49,12 @@ let app: Express;
 beforeEach(() => {
   const dir = mkdtempSync(join(tmpdir(), "ad-impressions-ingest-"));
   db = initializeDatabase(join(dir, "test.sqlite"));
-  app = createApp({ db, ingestToken: TOKEN, mcpToken: MCP_TOKEN });
+  app = createApp({
+    store: createSqliteStore(db),
+    isDatabaseReady: () => Promise.resolve(isDatabaseReady(db)),
+    ingestToken: TOKEN,
+    mcpToken: MCP_TOKEN,
+  });
 });
 
 afterEach(() => {

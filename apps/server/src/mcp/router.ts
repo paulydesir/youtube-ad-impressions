@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { DatabaseClient } from "../db/client.js";
+import type { ImpressionStore } from "../repositories/store.js";
 import { createMcpServer } from "./server.js";
 
 function methodNotAllowed(res: Response): void {
@@ -14,11 +14,11 @@ function methodNotAllowed(res: Response): void {
 // Stateless Streamable HTTP transport at /mcp: one fresh McpServer per POST
 // request, no session tracking. GET/DELETE are rejected with 405 per the
 // stateless example in the MCP TypeScript SDK.
-export function createMcpRouter(db: DatabaseClient): Router {
+export function createMcpRouter(store: ImpressionStore, log: (message: string) => void = console.info): Router {
   const router = Router();
 
   router.post("/", async (req: Request, res: Response) => {
-    const server = createMcpServer(db);
+    const server = createMcpServer(store, log);
     try {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
