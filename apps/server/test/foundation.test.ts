@@ -8,9 +8,11 @@ import { loadConfig } from "../src/config/env.js";
 import {
   closeDatabase,
   initializeDatabase,
+  isDatabaseReady,
   type DatabaseClient,
 } from "../src/db/client.js";
 import { createApp } from "../src/http/app.js";
+import { createSqliteStore } from "../src/repositories/store.js";
 
 const TOKEN = "test-token";
 const MCP_TOKEN = "mcp-test-token";
@@ -30,7 +32,15 @@ afterEach(() => {
 function testApp(requestLog?: (message: string) => void) {
   const dir = mkdtempSync(join(tmpdir(), "ad-impressions-foundation-"));
   db = initializeDatabase(join(dir, "test.sqlite"));
-  return createApp({ db, ingestToken: TOKEN, mcpToken: MCP_TOKEN, requestLog });
+  return createApp({
+    store: createSqliteStore(db),
+    // Closes over the mutable `db` binding so the unavailability test below
+    // (which closes the database) still observes the failure.
+    isDatabaseReady: () => Promise.resolve(isDatabaseReady(db)),
+    ingestToken: TOKEN,
+    mcpToken: MCP_TOKEN,
+    requestLog,
+  });
 }
 
 describe("GET /healthz", () => {
@@ -71,6 +81,10 @@ describe("loadConfig", () => {
       INGEST_API_TOKEN: TOKEN,
       MCP_API_TOKEN: MCP_TOKEN,
       LOG_LEVEL: "info",
+      POSTGRES_USER: "ad_impressions",
+      POSTGRES_PASSWORD: "ad_impressions",
+      POSTGRES_DB: "ad_impressions",
+      POSTGRES_PORT: 5432,
       },
     );
   });

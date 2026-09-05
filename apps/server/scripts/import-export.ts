@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(serverDir, ".env") });
 
-import { closeDatabase, initializeDatabase } from "../src/db/client.js";
+import { openDatabase } from "../src/db/database.js";
 import { importLegacyExport } from "../src/import/legacy-import.js";
 
 function usage(): never {
@@ -27,13 +27,13 @@ try {
   process.exit(1);
 }
 
-const databaseFile = resolve(
-  serverDir,
-  process.env.DATABASE_FILE ?? "./data/ad-impressions.sqlite",
-);
-const db = initializeDatabase(databaseFile);
+// Honors DATABASE_URL when set (PostgreSQL), otherwise the SQLite file.
+const database = await openDatabase({
+  DATABASE_URL: process.env.DATABASE_URL,
+  DATABASE_FILE: resolve(serverDir, process.env.DATABASE_FILE ?? "./data/ad-impressions.sqlite"),
+});
 try {
-  const summary = await importLegacyExport(db, data);
+  const summary = await importLegacyExport(database.store, data);
   // Summary counts only — never the payload.
   console.info(
     `Imported ${summary.accepted} impressions ` +
@@ -43,5 +43,5 @@ try {
   console.error(`Import failed: ${error instanceof Error ? error.message : error}`);
   process.exitCode = 1;
 } finally {
-  closeDatabase(db);
+  await database.close();
 }

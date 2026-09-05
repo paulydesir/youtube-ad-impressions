@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { loadConfig } from "./config/env.js";
-import { initializeDatabase } from "./db/client.js";
+import { openDatabase } from "./db/database.js";
 import { createApp } from "./http/app.js";
 
 // Load apps/server/.env regardless of the working directory callers run
@@ -12,7 +12,7 @@ dotenv.config({
   path: join(dirname(fileURLToPath(import.meta.url)), "..", ".env"),
 });
 
-function main(): void {
+async function main(): Promise<void> {
   let config;
   try {
     config = loadConfig();
@@ -21,32 +21,60 @@ function main(): void {
     process.exit(1);
   }
 
-  let db;
+  let database;
   try {
-    db = initializeDatabase(config.DATABASE_FILE);
+    database = await openDatabase(config);
   } catch (error) {
+    const target =
+      config.DATABASE_URL !== undefined ? "PostgreSQL (DATABASE_URL)" : config.DATABASE_FILE;
     console.error(
-      `Failed to open database at ${config.DATABASE_FILE}: ${error instanceof Error ? error.message : error}`,
+      `Failed to open database at ${target}: ${error instanceof Error ? error.message : error}`,
     );
     process.exit(1);
   }
 
+  console.info(`Opened ${database.kind} database: ${database.label}`);
+  console.info(`Database ready: ${await database.isReady()}`);
+
+  const verbose = config.LOG_LEVEL === "debug" || config.LOG_LEVEL === "info";
   const app = createApp({
-    db,
+    store: database.store,
+    isDatabaseReady: () => database.isReady(),
     ingestToken: config.INGEST_API_TOKEN,
     mcpToken: config.MCP_API_TOKEN,
-    requestLog:
-      config.LOG_LEVEL === "debug" || config.LOG_LEVEL === "info"
-        ? (message) => console.info(`[Ad Impressions Server] ${message}`)
-        : undefined,
+    requestLog: verbose
+      ? (message) => console.info(`[Ad Impressions Server] ${message}`)
+      : undefined,
+    log: verbose ? (message) => console.info(`[Ad Impressions Server] ${message}`) : undefined,
   });
   const server = app.listen(config.PORT, config.HOST, () => {
-    console.info(`Listening on http://${config.HOST}:${config.PORT}`);
+    console.info(
+      `Listening on http://${config.HOST}:${config.PORT} (${database.kind}: ${database.label})`,
+    );
   });
   server.on("error", (error: NodeJS.ErrnoException) => {
     console.error(`Failed to listen on ${config.HOST}:${config.PORT}: ${error.message}`);
     process.exit(1);
   });
+
+  // The PostgreSQL pool holds the event loop open; close it (or the SQLite
+  // handle) before exiting so `docker stop` and Ctrl+C shut down cleanly.
+  const shutdown = (signal: string) => {
+    console.info(`Received ${signal}, closing database...`);
+    void database
+      .close()
+      .catch((error: unknown) => {
+        console.error(
+          `Error closing database: ${error instanceof Error ? error.message : error}`,
+        );
+      })
+      .finally(() => process.exit(0));
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
-main();
+void main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});
