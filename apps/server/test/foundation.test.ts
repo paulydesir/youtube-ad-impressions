@@ -13,6 +13,7 @@ import {
 import { createApp } from "../src/http/app.js";
 
 const TOKEN = "test-token";
+const MCP_TOKEN = "mcp-test-token";
 
 let db: DatabaseClient;
 
@@ -29,7 +30,7 @@ afterEach(() => {
 function testApp(requestLog?: (message: string) => void) {
   const dir = mkdtempSync(join(tmpdir(), "ad-impressions-foundation-"));
   db = initializeDatabase(join(dir, "test.sqlite"));
-  return createApp({ db, ingestToken: TOKEN, requestLog });
+  return createApp({ db, ingestToken: TOKEN, mcpToken: MCP_TOKEN, requestLog });
 }
 
 describe("GET /healthz", () => {
@@ -61,29 +62,51 @@ describe("GET /healthz", () => {
 
 describe("loadConfig", () => {
   it("applies defaults for optional values", () => {
-    assert.deepEqual(loadConfig({ INGEST_API_TOKEN: TOKEN }), {
+    assert.deepEqual(
+      loadConfig({ INGEST_API_TOKEN: TOKEN, MCP_API_TOKEN: MCP_TOKEN }),
+      {
       PORT: 8787,
       HOST: "127.0.0.1",
       DATABASE_FILE: "./data/ad-impressions.sqlite",
       INGEST_API_TOKEN: TOKEN,
+      MCP_API_TOKEN: MCP_TOKEN,
       LOG_LEVEL: "info",
-    });
+      },
+    );
   });
 
   it("rejects a missing ingestion token", () => {
-    assert.throws(() => loadConfig({}), /INGEST_API_TOKEN/);
+    assert.throws(() => loadConfig({ MCP_API_TOKEN: MCP_TOKEN }), /INGEST_API_TOKEN/);
+  });
+
+  it("rejects a missing or reused MCP token", () => {
+    assert.throws(() => loadConfig({ INGEST_API_TOKEN: TOKEN }), /MCP_API_TOKEN/);
+    assert.throws(
+      () => loadConfig({ INGEST_API_TOKEN: TOKEN, MCP_API_TOKEN: TOKEN }),
+      /must differ/,
+    );
   });
 
   it("rejects an invalid port with a clear message", () => {
     assert.throws(
-      () => loadConfig({ INGEST_API_TOKEN: TOKEN, PORT: "not-a-port" }),
+      () =>
+        loadConfig({
+          INGEST_API_TOKEN: TOKEN,
+          MCP_API_TOKEN: MCP_TOKEN,
+          PORT: "not-a-port",
+        }),
       /Invalid server configuration: PORT/,
     );
   });
 
   it("rejects an unknown log level", () => {
     assert.throws(
-      () => loadConfig({ INGEST_API_TOKEN: TOKEN, LOG_LEVEL: "verbose" }),
+      () =>
+        loadConfig({
+          INGEST_API_TOKEN: TOKEN,
+          MCP_API_TOKEN: MCP_TOKEN,
+          LOG_LEVEL: "verbose",
+        }),
       /Invalid server configuration: LOG_LEVEL/,
     );
   });

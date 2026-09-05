@@ -106,6 +106,8 @@ describe("analysis services", () => {
   it("answers single-advertiser questions with an overview", async () => {
     await seedScenario();
     const overview = await getAdvertiserOverview(db, "Coursera");
+    assert.equal(overview.status, "found");
+    assert.equal(overview.advertiser, "coursera.org");
     assert.equal(overview.stats?.impressionCount, 2);
     assert.equal(overview.recent.length, 2);
     assert.deepEqual(overview.headlines, ["Invest in Your Growth", "Save $70+"]);
@@ -115,8 +117,39 @@ describe("analysis services", () => {
   it("returns empty overview data for an unknown advertiser", async () => {
     await seedScenario();
     const overview = await getAdvertiserOverview(db, "nobody");
+    assert.equal(overview.status, "not_found");
+    assert.deepEqual(overview.candidates, []);
     assert.equal(overview.stats, null);
     assert.deepEqual(overview.recent, []);
+  });
+
+  it("returns candidates instead of combining ambiguous advertiser matches", async () => {
+    await store(
+      impression("evt-google", {
+        advertiser_name: "Google Search",
+        advertiser_domain: "google.com",
+        creative_title: "Search creative",
+      }),
+    );
+    await store(
+      impression("evt-cloud", {
+        advertiser_name: "Google Cloud",
+        advertiser_domain: "cloud.google.com",
+        creative_title: "Cloud creative",
+      }),
+    );
+
+    const ambiguous = await getAdvertiserOverview(db, "google");
+    assert.equal(ambiguous.status, "ambiguous");
+    assert.deepEqual(ambiguous.candidates.sort(), ["cloud.google.com", "google.com"]);
+    assert.equal(ambiguous.stats, null);
+    assert.deepEqual(ambiguous.recent, []);
+
+    const exact = await getAdvertiserOverview(db, "google.com");
+    assert.equal(exact.status, "found");
+    assert.equal(exact.advertiser, "google.com");
+    assert.equal(exact.stats?.impressionCount, 1);
+    assert.deepEqual(exact.creativeTitles, ["Search creative"]);
   });
 
   it("enforces result limits", async () => {

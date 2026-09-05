@@ -25,6 +25,10 @@ export interface AdvertiserStatsDto {
 }
 
 export interface AdvertiserOverviewDto {
+  status: "found" | "not_found" | "ambiguous";
+  query: string;
+  advertiser: string | null;
+  candidates: string[];
   stats: AdvertiserStatsDto | null;
   recent: ImpressionDto[];
   headlines: string[];
@@ -62,15 +66,49 @@ export async function getAdvertiserStats(
   return (await repoAdvertiserStats(db, filters)).map(toStatsDto);
 }
 
-// One advertiser's full picture: aggregates plus recent observations and the
-// distinct headlines/creatives actually seen. stats is null when the
-// advertiser has no observations.
+// Resolves one observed advertiser key before returning any data. Exact keys
+// win, unique substring matches resolve automatically, and broad matches are
+// returned as candidates instead of being silently combined.
 export async function getAdvertiserOverview(
   db: DatabaseClient,
   advertiser: string,
 ): Promise<AdvertiserOverviewDto> {
-  const overview = await getAdvertiserOverviewData(db, advertiser);
+  const query = advertiser.trim();
+  const exact = await getAdvertiserOverviewData(db, query);
+  if (exact.stats !== null) {
+    return {
+      status: "found",
+      query,
+      advertiser: exact.stats.advertiser,
+      candidates: [exact.stats.advertiser],
+      stats: toStatsDto(exact.stats),
+      recent: exact.recent,
+      headlines: exact.headlines,
+      creativeTitles: exact.creativeTitles,
+    };
+  }
+
+  const candidates = (await repoAdvertiserStats(db, { advertiser: query, limit: 100 }))
+    .map((candidate) => candidate.advertiser);
+  if (candidates.length !== 1) {
+    return {
+      status: candidates.length === 0 ? "not_found" : "ambiguous",
+      query,
+      advertiser: null,
+      candidates,
+      stats: null,
+      recent: [],
+      headlines: [],
+      creativeTitles: [],
+    };
+  }
+
+  const overview = await getAdvertiserOverviewData(db, candidates[0]!);
   return {
+    status: "found",
+    query,
+    advertiser: candidates[0]!,
+    candidates,
     stats: overview.stats === null ? null : toStatsDto(overview.stats),
     recent: overview.recent,
     headlines: overview.headlines,

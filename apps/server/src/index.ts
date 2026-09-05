@@ -34,6 +34,7 @@ function main(): void {
   const app = createApp({
     db,
     ingestToken: config.INGEST_API_TOKEN,
+    mcpToken: config.MCP_API_TOKEN,
     requestLog:
       config.LOG_LEVEL === "debug" || config.LOG_LEVEL === "info"
         ? (message) => console.info(`[Ad Impressions Server] ${message}`)

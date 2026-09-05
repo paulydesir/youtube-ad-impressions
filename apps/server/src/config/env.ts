@@ -1,14 +1,22 @@
 import { z } from "zod";
 
-const configSchema = z.object({
-  PORT: z.coerce.number().int().min(1).max(65535).default(8787),
-  HOST: z.string().min(1).default("127.0.0.1"),
-  DATABASE_FILE: z.string().min(1).default("./data/ad-impressions.sqlite"),
-  INGEST_API_TOKEN: z
-    .string({ error: "INGEST_API_TOKEN must be set to a non-empty local token" })
-    .min(1, "INGEST_API_TOKEN must be set to a non-empty local token"),
-  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
-});
+const configSchema = z
+  .object({
+    PORT: z.coerce.number().int().min(1).max(65535).default(8787),
+    HOST: z.string().min(1).default("127.0.0.1"),
+    DATABASE_FILE: z.string().min(1).default("./data/ad-impressions.sqlite"),
+    INGEST_API_TOKEN: z
+      .string({ error: "INGEST_API_TOKEN must be set to a non-empty local token" })
+      .min(1, "INGEST_API_TOKEN must be set to a non-empty local token"),
+    MCP_API_TOKEN: z
+      .string({ error: "MCP_API_TOKEN must be set to a non-empty local token" })
+      .min(1, "MCP_API_TOKEN must be set to a non-empty local token"),
+    LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  })
+  .refine((config) => config.MCP_API_TOKEN !== config.INGEST_API_TOKEN, {
+    path: ["MCP_API_TOKEN"],
+    message: "MCP_API_TOKEN must differ from INGEST_API_TOKEN",
+  });
 
 export type ServerConfig = z.infer<typeof configSchema>;
 

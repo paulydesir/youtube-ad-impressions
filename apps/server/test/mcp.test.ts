@@ -16,7 +16,8 @@ import {
 import { createApp } from "../src/http/app.js";
 import { insertImpression } from "../src/repositories/impressions.js";
 
-const TOKEN = "mcp-test-token";
+const INGEST_TOKEN = "ingest-test-token";
+const MCP_TOKEN = "mcp-test-token";
 
 function impression(eventId: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -77,7 +78,7 @@ async function seedScenario() {
 }
 
 async function startMcpClient(): Promise<Client> {
-  const app = createApp({ db, ingestToken: TOKEN });
+  const app = createApp({ db, ingestToken: INGEST_TOKEN, mcpToken: MCP_TOKEN });
   httpServer = createServer(app);
   await new Promise<void>((resolve) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());
@@ -86,6 +87,7 @@ async function startMcpClient(): Promise<Client> {
   const nextClient = new Client({ name: "mcp-test-client", version: "0.0.0" });
   transport = new StreamableHTTPClientTransport(
     new URL(`http://127.0.0.1:${port}/mcp`),
+    { requestInit: { headers: { Authorization: `Bearer ${MCP_TOKEN}` } } },
   );
   await nextClient.connect(transport);
   client = nextClient;
@@ -158,6 +160,16 @@ describe("MCP tools", () => {
     assert.ok(impressions.every((row) => !("id" in row)));
   });
 
+  it("treats Inspector's empty terms object as an omitted optional filter", async () => {
+    const result = await client.callTool({
+      name: "search_ad_impressions",
+      arguments: { advertiser: "coursera", terms: {} },
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.equal((structured(result)["impressions"] as unknown[]).length, 2);
+  });
+
   it("answers frequency questions via get_advertiser_stats", async () => {
     const result = await client.callTool({ name: "get_advertiser_stats", arguments: {} });
     assert.equal(result.isError, undefined);
@@ -176,6 +188,8 @@ describe("MCP tools", () => {
     });
     assert.equal(result.isError, undefined);
     const body = structured(result);
+    assert.equal(body["status"], "found");
+    assert.equal(body["advertiser"], "coursera.org");
     const stats = body["stats"] as Record<string, unknown>;
     assert.equal(stats["impressionCount"], 2);
     assert.equal((body["recent"] as unknown[]).length, 2);
@@ -190,6 +204,8 @@ describe("MCP tools", () => {
       arguments: { advertiser: "nobody" },
     });
     const body = structured(result);
+    assert.equal(body["status"], "not_found");
+    assert.deepEqual(body["candidates"], []);
     assert.equal(body["stats"], null);
     assert.deepEqual(body["recent"], []);
     assert.deepEqual(body["headlines"], []);
@@ -208,6 +224,65 @@ describe("MCP tools", () => {
     assert.equal((structured(ranked)["stats"] as unknown[]).length, 1);
   });
 
+  it("returns ambiguity instead of combining multiple advertiser keys", async () => {
+    await store(
+      impression("evt-google", {
+        advertiser_name: "Google Search",
+        advertiser_domain: "google.com",
+        creative_title: "Search creative",
+      }),
+    );
+    await store(
+      impression("evt-cloud", {
+        advertiser_name: "Google Cloud",
+        advertiser_domain: "cloud.google.com",
+        creative_title: "Cloud creative",
+      }),
+    );
+
+    const result = await client.callTool({
+      name: "get_advertiser_overview",
+      arguments: { advertiser: "google" },
+    });
+    const body = structured(result);
+    assert.equal(body["status"], "ambiguous");
+    assert.deepEqual(
+      (body["candidates"] as string[]).sort(),
+      ["cloud.google.com", "google.com"],
+    );
+    assert.equal(body["stats"], null);
+    assert.deepEqual(body["recent"], []);
+  });
+
+  it("validates date ranges and normalizes offsets to UTC", async () => {
+    const invalid = await client.callTool({
+      name: "search_ad_impressions",
+      arguments: { from: "yesterday" },
+    });
+    const reversed = await client.callTool({
+      name: "get_advertiser_stats",
+      arguments: {
+        from: "2026-09-03T00:00:00.000Z",
+        to: "2026-09-01T00:00:00.000Z",
+      },
+    });
+    const normalized = await client.callTool({
+      name: "search_ad_impressions",
+      arguments: {
+        advertiser: "coursera",
+        from: "2026-09-01T08:00:00-04:00",
+        to: "2026-09-01T08:00:01-04:00",
+      },
+    });
+
+    assert.equal(invalid.isError, true);
+    assert.equal(reversed.isError, true);
+    assert.equal(
+      (structured(normalized)["impressions"] as unknown[]).length,
+      1,
+    );
+  });
+
   it("rejects calls to unknown tools", async () => {
     const result = await client.callTool({ name: "run_sql", arguments: {} });
     assert.equal(result.isError, true);
@@ -215,9 +290,33 @@ describe("MCP tools", () => {
 });
 
 describe("MCP transport", () => {
+  it("requires the dedicated MCP bearer token", async () => {
+    const { port } = httpServer.address() as AddressInfo;
+    const endpoint = `http://127.0.0.1:${port}/mcp`;
+    const unauthorized = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{",
+    });
+    const wrongToken = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${INGEST_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+
+    assert.equal(unauthorized.status, 401);
+    assert.equal(wrongToken.status, 401);
+    assert.equal(unauthorized.headers.get("www-authenticate"), "Bearer");
+  });
+
   it("rejects GET /mcp with 405 in stateless mode", async () => {
     const { port } = httpServer.address() as AddressInfo;
-    const response = await fetch(`http://127.0.0.1:${port}/mcp`);
+    const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      headers: { Authorization: `Bearer ${MCP_TOKEN}` },
+    });
     assert.equal(response.status, 405);
   });
 });
