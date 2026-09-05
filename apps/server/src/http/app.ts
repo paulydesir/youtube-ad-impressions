@@ -7,11 +7,13 @@ import express, {
 } from "express";
 import { isDatabaseReady, type DatabaseClient } from "../db/client.js";
 import { createMcpRouter } from "../mcp/router.js";
+import { requireBearerToken } from "./auth.js";
 import { createImpressionsRouter } from "./impressions.js";
 
 export interface AppOptions {
   db: DatabaseClient;
   ingestToken: string;
+  mcpToken: string;
   requestLog?: (message: string) => void;
 }
 
@@ -51,6 +53,9 @@ export function createApp(options: AppOptions): Express {
       next();
     });
   }
+  // Authenticate MCP before parsing potentially large request bodies. The
+  // ingestion API retains its route-specific bearer check below.
+  app.use("/mcp", requireBearerToken(options.mcpToken));
   // 500 records of ~1KB each fit comfortably; the default 100kb would not.
   app.use(express.json({ limit: "5mb" }));
 

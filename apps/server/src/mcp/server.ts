@@ -8,9 +8,9 @@ import {
 import {
   getAdvertiserOverviewInputShape,
   getAdvertiserOverviewOutputSchema,
-  getAdvertiserStatsInputShape,
+  getAdvertiserStatsInputSchema,
   getAdvertiserStatsOutputSchema,
-  searchAdImpressionsInputShape,
+  searchAdImpressionsInputSchema,
   searchAdImpressionsOutputSchema,
 } from "./schemas.js";
 
@@ -44,7 +44,7 @@ export function createMcpServer(db: DatabaseClient): McpServer {
         "Search individual observed ad impressions by advertiser, keywords, date range, and skip behavior. " +
         "Use when the user asks about individual ads, promotions, headlines, timing, or skip behavior. " +
         "Returns observed local data only, newest first.",
-      inputSchema: searchAdImpressionsInputShape,
+      inputSchema: searchAdImpressionsInputSchema,
       outputSchema: searchAdImpressionsOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
@@ -52,8 +52,8 @@ export function createMcpServer(db: DatabaseClient): McpServer {
       const impressions = await searchImpressions(db, {
         advertiser: args.advertiser,
         terms: args.terms,
-        from: args.from,
-        to: args.to,
+        from: args.from === undefined ? undefined : new Date(args.from).toISOString(),
+        to: args.to === undefined ? undefined : new Date(args.to).toISOString(),
         skipped: args.skipped,
         limit: args.limit,
       });
@@ -72,15 +72,15 @@ export function createMcpServer(db: DatabaseClient): McpServer {
         "Rank advertisers by observed impression frequency with counts, total watch time, skip counts, and skip rates. " +
         "Use when the user asks which advertisers appear most frequently or requests counts, rankings, or rates. " +
         "Returns observed local data only.",
-      inputSchema: getAdvertiserStatsInputShape,
+      inputSchema: getAdvertiserStatsInputSchema,
       outputSchema: getAdvertiserStatsOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
     async (args) => {
       const stats = await getAdvertiserStats(db, {
         advertiser: args.advertiser,
-        from: args.from,
-        to: args.to,
+        from: args.from === undefined ? undefined : new Date(args.from).toISOString(),
+        to: args.to === undefined ? undefined : new Date(args.to).toISOString(),
         limit: args.limit,
       });
       const output = { stats };
@@ -96,7 +96,7 @@ export function createMcpServer(db: DatabaseClient): McpServer {
     {
       description:
         "Explain one advertiser: aggregate statistics plus recent observed impressions and the distinct headlines and creative titles actually seen. " +
-        "Use when the user names one advertiser and wants a general explanation. " +
+        "Use when the user names one advertiser and wants a general explanation. Broad names may return an ambiguous status with observed candidate keys. " +
         "Returns observed local data only.",
       inputSchema: getAdvertiserOverviewInputShape,
       outputSchema: getAdvertiserOverviewOutputSchema,
@@ -105,6 +105,10 @@ export function createMcpServer(db: DatabaseClient): McpServer {
     async (args) => {
       const overview = await getAdvertiserOverview(db, args.advertiser);
       const output = {
+        status: overview.status,
+        query: overview.query,
+        advertiser: overview.advertiser,
+        candidates: overview.candidates,
         stats: overview.stats,
         recent: overview.recent,
         headlines: overview.headlines,

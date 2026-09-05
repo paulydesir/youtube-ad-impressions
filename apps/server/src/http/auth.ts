@@ -9,7 +9,7 @@ function tokensEqual(provided: string, expected: string): boolean {
 
 // Rejects requests without a matching `Authorization: Bearer <token>`.
 // Failures carry no detail about what was wrong or what was expected.
-export function requireIngestToken(expectedToken: string) {
+export function requireBearerToken(expectedToken: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const header = req.get("authorization");
     const provided = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
@@ -21,3 +21,5 @@ export function requireIngestToken(expectedToken: string) {
     next();
   };
 }
+
+export const requireIngestToken = requireBearerToken;

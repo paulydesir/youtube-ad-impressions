@@ -122,6 +122,28 @@ const compactColumns = {
 // anonymous impressions still aggregate instead of vanishing.
 const advertiserKey = sql<string>`coalesce(${adImpressions.advertiserDomain}, ${adImpressions.advertiserName}, ${UNKNOWN_ADVERTISER})`;
 
+function exactAdvertiserKeyCondition(value: string) {
+  return sql`lower(${advertiserKey}) = lower(${value})`;
+}
+
+function toAdvertiserStatRow(row: {
+  advertiser: string;
+  impressionCount: number;
+  totalDurationMs: string | number | null;
+  skippedCount: string | number | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+}): AdvertiserStatRow {
+  return {
+    advertiser: row.advertiser,
+    impressionCount: row.impressionCount,
+    totalDurationMs: Number(row.totalDurationMs ?? 0),
+    skippedCount: Number(row.skippedCount ?? 0),
+    firstSeenAt: row.firstSeenAt ?? "",
+    lastSeenAt: row.lastSeenAt ?? "",
+  };
+}
+
 // Idempotent insert keyed on event_id. Returns "duplicate" instead of
 // throwing when the event was already stored.
 export async function insertImpression(
@@ -209,29 +231,21 @@ export async function getAdvertiserStats(
     .orderBy(desc(count(adImpressions.id)))
     .limit(clampLimit(filters.limit, STATS_DEFAULT_LIMIT));
 
-  return rows.map((row) => ({
-    advertiser: row.advertiser,
-    impressionCount: row.impressionCount,
-    totalDurationMs: Number(row.totalDurationMs ?? 0),
-    skippedCount: Number(row.skippedCount ?? 0),
-    firstSeenAt: row.firstSeenAt ?? "",
-    lastSeenAt: row.lastSeenAt ?? "",
-  }));
+  return rows.map(toAdvertiserStatRow);
 }
 
 async function distinctColumnValues(
   db: DatabaseClient,
   column: typeof adImpressions.adHeadline | typeof adImpressions.creativeTitle,
-  advertiser: string,
+  resolvedAdvertiser: string,
 ): Promise<string[]> {
-  const condition = advertiserConditions(advertiser);
   const rows = await db
     .selectDistinct({ value: column })
     .from(adImpressions)
     .where(
       and(
         sql`${column} is not null`,
-        ...(condition ? [condition] : []),
+        exactAdvertiserKeyCondition(resolvedAdvertiser),
       ),
     )
     .orderBy(column);
@@ -240,19 +254,36 @@ async function distinctColumnValues(
 
 export async function getAdvertiserOverviewData(
   db: DatabaseClient,
-  advertiser: string,
+  resolvedAdvertiser: string,
 ): Promise<AdvertiserOverviewData> {
-  const [stats] = await getAdvertiserStats(db, { advertiser, limit: 1 });
-  const recent = await searchImpressions(db, {
-    advertiser,
-    limit: OVERVIEW_RECENT_LIMIT,
-  });
+  // This operation intentionally uses one exact observed aggregation key. The
+  // service layer resolves user-facing substring queries before calling it.
+  const condition = exactAdvertiserKeyCondition(resolvedAdvertiser);
+  const [statsRow] = await db
+    .select({
+      advertiser: advertiserKey,
+      impressionCount: count(adImpressions.id),
+      totalDurationMs: sum(adImpressions.durationMs),
+      skippedCount: sum(sql`case when ${adImpressions.skipped} then 1 else 0 end`),
+      firstSeenAt: min(adImpressions.startedAt),
+      lastSeenAt: max(adImpressions.startedAt),
+    })
+    .from(adImpressions)
+    .where(condition)
+    .groupBy(advertiserKey)
+    .limit(1);
+  const recent = await db
+    .select(compactColumns)
+    .from(adImpressions)
+    .where(condition)
+    .orderBy(desc(adImpressions.startedAt), desc(adImpressions.id))
+    .limit(OVERVIEW_RECENT_LIMIT);
   const [headlines, creativeTitles] = await Promise.all([
-    distinctColumnValues(db, adImpressions.adHeadline, advertiser),
-    distinctColumnValues(db, adImpressions.creativeTitle, advertiser),
+    distinctColumnValues(db, adImpressions.adHeadline, resolvedAdvertiser),
+    distinctColumnValues(db, adImpressions.creativeTitle, resolvedAdvertiser),
   ]);
   return {
-    stats: stats ?? null,
+    stats: statsRow === undefined ? null : toAdvertiserStatRow(statsRow),
     recent,
     headlines,
     creativeTitles,

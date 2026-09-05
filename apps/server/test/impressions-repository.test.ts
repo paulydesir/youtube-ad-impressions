@@ -176,7 +176,7 @@ describe("getAdvertiserOverviewData", () => {
   it("returns stats, recent impressions, and distinct texts", async () => {
     await store(impression({ event_id: "e1", ad_headline: "Save $70+" }));
     await store(impression({ event_id: "e2", ad_headline: "Invest in Your Growth" }));
-    const overview = await getAdvertiserOverviewData(db, "coursera");
+    const overview = await getAdvertiserOverviewData(db, "coursera.org");
     assert.equal(overview.stats?.impressionCount, 2);
     assert.equal(overview.recent.length, 2);
     assert.deepEqual(overview.headlines, ["Invest in Your Growth", "Save $70+"]);

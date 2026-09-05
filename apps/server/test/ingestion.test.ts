@@ -13,6 +13,7 @@ import {
 import { createApp } from "../src/http/app.js";
 
 const TOKEN = "ingest-test-token";
+const MCP_TOKEN = "mcp-test-token";
 
 function impression(eventId: string): Record<string, unknown> {
   return {
@@ -46,7 +47,7 @@ let app: Express;
 beforeEach(() => {
   const dir = mkdtempSync(join(tmpdir(), "ad-impressions-ingest-"));
   db = initializeDatabase(join(dir, "test.sqlite"));
-  app = createApp({ db, ingestToken: TOKEN });
+  app = createApp({ db, ingestToken: TOKEN, mcpToken: MCP_TOKEN });
 });
 
 afterEach(() => {
