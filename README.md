@@ -65,11 +65,14 @@ tests can also be run directly from `apps/extension` with `npm test`.
 ## Layout
 
 - `apps/extension/src/*.ts` — ESM sources (`types.ts` holds the storage/message schema).
-- `apps/extension/popup/popup.ts` — dashboard source; `popup.html`/`popup.css` are copied as-is.
+- `apps/extension/popup/popup.tsx` — React entry point; `App.tsx` contains the dashboard components; `popup.html`/`popup.css` are copied as-is.
 - `apps/extension/dist/` — gitignored build output (`background.js`, `content.js`, `popup/`).
 - `apps/extension/test/*.test.ts` — `node:test` suites importing `../src/*.ts` directly.
 - `apps/server/` — reserved for the local companion server (Feature 1+).
 - `packages/contracts/` — reserved for shared schemas and transport types (Feature 2+).
+
+The popup uses React and React DOM, bundled locally in production mode with esbuild.
+No remote scripts or additional Chrome permissions are required.
 
 Bundling note: Chrome content scripts load as classic scripts and reject
 static `import` statements, so `src/content.ts` (+ `ad-state-machine.ts`) is

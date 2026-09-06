@@ -8,65 +8,7 @@
     <link rel="stylesheet" href="popup.css">
   </head>
   <body>
-    <main>
-      <header class="hero">
-        <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Local ad journal</p>
-        <h1>YouTube Ad Impressions</h1>
-        <p id="status" class="status" role="status">Loading local history…</p>
-      </header>
-
-      <section class="metrics" aria-label="Summary">
-        <article class="metric">
-          <span class="metric-label">Impressions</span>
-          <strong class="metric-value" id="total-impressions">—</strong>
-        </article>
-        <article class="metric">
-          <span class="metric-label">Ad time</span>
-          <strong class="metric-value" id="total-time">—</strong>
-        </article>
-        <article class="metric">
-          <span class="metric-label">Ads / watch hr</span>
-          <strong class="metric-value" id="ads-per-hour">—</strong>
-        </article>
-        <article class="metric">
-          <span class="metric-label">Skipped</span>
-          <strong class="metric-value" id="skip-rate">—</strong>
-        </article>
-      </section>
-
-      <section aria-labelledby="advertisers-heading">
-        <div class="section-head">
-          <h2 id="advertisers-heading">Top Advertisers</h2>
-        </div>
-        <ol id="advertisers" class="ranking"></ol>
-      </section>
-
-      <section aria-labelledby="recent-heading">
-        <div class="section-head">
-          <h2 id="recent-heading">Recent Impressions</h2>
-        </div>
-        <div id="recent" class="recent"></div>
-      </section>
-
-      <section aria-labelledby="backup-heading">
-        <div class="section-head">
-          <h2 id="backup-heading">Backup &amp; Restore</h2>
-        </div>
-        <p id="backup-status" class="status" role="status">Export a JSON copy, or restore one.</p>
-        <div class="backup-row">
-          <button id="export" type="button">Export JSON</button>
-          <button id="import-trigger" type="button">Import JSON</button>
-          <input id="import-file" type="file" accept=".json,application/json" hidden>
-          <div class="segmented" role="radiogroup" aria-label="Import mode">
-            <label><input type="radio" name="import-mode" value="merge" checked><span>Merge</span></label>
-            <label><input type="radio" name="import-mode" value="replace"><span>Replace</span></label>
-          </div>
-        </div>
-        <p class="hint">Merge skips duplicates. Replace clears local history first.</p>
-      </section>
-
-      <footer class="footnote">Stored only on this browser</footer>
-    </main>
+    <div id="root"></div>
     <script src="popup.js"></script>
   </body>
 </html>
