@@ -25,6 +25,14 @@ export function createImpressionsRouter(
   const router = Router();
   router.use(requireIngestToken(ingestToken));
 
+  // The extension dashboard reads its authoritative history from the server.
+  router.get("/", async (req: Request, res: Response) => {
+    const requested = Number(req.query.limit ?? 100);
+    const limit = Number.isFinite(requested) ? requested : 100;
+    const records = await store.searchImpressions({ limit });
+    res.json({ records });
+  });
+
   // Single impression. 201 for a new record, 200 with duplicate:true when the
   // event_id was already stored, 400 for an invalid record.
   router.post("/", async (req: Request, res: Response) => {

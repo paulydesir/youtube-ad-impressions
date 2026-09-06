@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ImpressionAnalytics } from "../src/analytics.ts";
-import { buildBackupFile } from "../src/backup.ts";
-import type { BackupFile, StoredImpression } from "../src/backup.ts";
-import {
-  createMessageHandler,
-  persistThenForward,
-} from "../src/message-handler.ts";
+import { createMessageHandler } from "../src/message-handler.ts";
 import type {
   MessageHandlerDeps,
   MessageResponse,
@@ -18,36 +13,22 @@ import { sampleImpression } from "./sample-impression.ts";
 
 interface MemoryWorld {
   deps: MessageHandlerDeps;
-  impressions: StoredImpression[];
-  forwarded: AdImpressionRecord[];
+  impressions: AdImpressionRecord[];
   getWatchTimeMs: () => number;
 }
 
 function createMemoryWorld(): MemoryWorld {
-  const impressions: StoredImpression[] = [];
-  const forwarded: AdImpressionRecord[] = [];
+  const impressions: AdImpressionRecord[] = [];
   let watchTimeMs = 0;
   let nextId = 1;
 
   const impressionStore: ImpressionStore = {
     addImpression: async (record) => {
       const id = nextId++;
-      impressions.push({ ...record, id });
-      return id;
+      impressions.push(record);
+      return String(id);
     },
-    getImpressions: async () =>
-      impressions.map(({ id: _localId, ...record }) => record),
-    getStoredImpressions: async () => [...impressions],
-    bulkAdd: async (records) => {
-      for (const record of records) impressions.push({ ...record, id: nextId++ });
-    },
-    replaceAll: async (records, incomingWatchTimeMs) => {
-      impressions.length = 0;
-      for (const { id: _localId, ...record } of records) {
-        impressions.push({ ...record, id: nextId++ });
-      }
-      watchTimeMs = incomingWatchTimeMs;
-    },
+    getImpressions: async () => [...impressions],
   };
 
   const watchTimeStore: WatchTimeStore = {
@@ -64,12 +45,8 @@ function createMemoryWorld(): MemoryWorld {
     deps: {
       impressionStore,
       watchTimeStore,
-      forwardRecord: async (record) => {
-        forwarded.push(record);
-      },
     },
     impressions,
-    forwarded,
     getWatchTimeMs: () => watchTimeMs,
   };
 }
@@ -89,74 +66,7 @@ function invoke(
   });
 }
 
-const tick = () => new Promise((resolve) => setImmediate(resolve));
-
-test("local persistence succeeds without waiting for an unavailable server", async () => {
-  const order: string[] = [];
-  let releaseForward: (() => void) | undefined;
-  const forwarding = new Promise<void>((resolve) => {
-    releaseForward = resolve;
-  });
-
-  const id = await persistThenForward(
-    sampleImpression(),
-    async () => {
-      order.push("persist");
-      return 42;
-    },
-    async () => {
-      order.push("forward");
-      await forwarding;
-    },
-  );
-
-  assert.equal(id, 42);
-  assert.deepEqual(order, ["persist", "forward"]);
-  releaseForward?.();
-});
-
-test("does not begin forwarding before local persistence completes", async () => {
-  let finishPersistence: ((id: number) => void) | undefined;
-  const persistence = new Promise<number>((resolve) => {
-    finishPersistence = resolve;
-  });
-  let forwarded = false;
-
-  const result = persistThenForward(
-    sampleImpression(),
-    async () => persistence,
-    async () => {
-      forwarded = true;
-    },
-  );
-
-  await Promise.resolve();
-  assert.equal(forwarded, false);
-  finishPersistence?.(7);
-  assert.equal(await result, 7);
-  assert.equal(forwarded, true);
-});
-
-test("does not forward when local persistence fails", async () => {
-  let forwarded = false;
-
-  await assert.rejects(
-    persistThenForward(
-      sampleImpression(),
-      async () => {
-        throw new Error("IndexedDB unavailable");
-      },
-      async () => {
-        forwarded = true;
-      },
-    ),
-    /IndexedDB unavailable/,
-  );
-
-  assert.equal(forwarded, false);
-});
-
-test("record-impression persists locally, responds ok, and forwards detached", async () => {
+test("record-impression persists on the server and responds ok", async () => {
   const world = createMemoryWorld();
   const record = sampleImpression();
 
@@ -166,17 +76,15 @@ test("record-impression persists locally, responds ok, and forwards detached", a
   });
 
   assert.equal(syncReturn, true);
-  assert.deepEqual(response, { ok: true, id: 1 });
+  assert.deepEqual(response, { ok: true, id: "1" });
   assert.equal(world.impressions.length, 1);
   assert.equal(world.impressions[0]?.event_id, record.event_id);
-  await tick();
-  assert.deepEqual(world.forwarded, [record]);
 });
 
-test("record-impression reports persistence failures without forwarding", async () => {
+test("record-impression reports server persistence failures", async () => {
   const world = createMemoryWorld();
   world.deps.impressionStore.addImpression = async () => {
-    throw new Error("IndexedDB unavailable");
+    throw new Error("PostgreSQL unavailable");
   };
 
   const { response } = await invoke(world.deps, {
@@ -184,9 +92,7 @@ test("record-impression reports persistence failures without forwarding", async 
     record: sampleImpression(),
   });
 
-  assert.deepEqual(response, { ok: false, error: "IndexedDB unavailable" });
-  await tick();
-  assert.deepEqual(world.forwarded, []);
+  assert.deepEqual(response, { ok: false, error: "PostgreSQL unavailable" });
 });
 
 test("get-dashboard returns newest-first records with analytics", async () => {
@@ -232,99 +138,4 @@ test("add-watch-time accumulates milliseconds", async () => {
   assert.equal(syncReturn, true);
   assert.deepEqual(response, { ok: true });
   assert.equal(world.getWatchTimeMs(), 1500);
-});
-
-test("export-data returns the backup envelope", async () => {
-  const world = createMemoryWorld();
-  await world.deps.impressionStore.addImpression(sampleImpression());
-  await world.deps.watchTimeStore.addWatchTime(9000);
-
-  const { response } = await invoke(world.deps, { type: "export-data" });
-
-  assert.equal(response.ok, true);
-  const exported = response as { ok: boolean; backup?: BackupFile };
-  assert.equal(exported.backup?.impressions.length, 1);
-  assert.equal(
-    exported.backup?.stats.find((stat) => stat.key === "watch_time_ms")?.value,
-    9000,
-  );
-});
-
-test("import-data merge dedupes across repeated imports", async () => {
-  const world = createMemoryWorld();
-  const backup = buildBackupFile([sampleImpression()], 5000);
-
-  const first = await invoke(world.deps, {
-    type: "import-data",
-    mode: "merge",
-    data: backup,
-  });
-  assert.deepEqual(first.response, {
-    ok: true,
-    imported: 1,
-    skipped: 0,
-    totalImpressions: 1,
-    watchTimeMs: 5000,
-  });
-
-  const second = await invoke(world.deps, {
-    type: "import-data",
-    mode: "merge",
-    data: backup,
-  });
-  assert.deepEqual(second.response, {
-    ok: true,
-    imported: 0,
-    skipped: 1,
-    totalImpressions: 1,
-    watchTimeMs: 5000,
-  });
-});
-
-test("import-data replace swaps contents and watch time", async () => {
-  const world = createMemoryWorld();
-  await world.deps.impressionStore.addImpression(
-    sampleImpression({ event_id: "stale" }),
-  );
-  await world.deps.watchTimeStore.addWatchTime(60_000);
-  const backup = buildBackupFile([sampleImpression({ event_id: "fresh" })], 1000);
-
-  const { response } = await invoke(world.deps, {
-    type: "import-data",
-    mode: "replace",
-    data: backup,
-  });
-
-  assert.deepEqual(response, {
-    ok: true,
-    imported: 1,
-    skipped: 0,
-    totalImpressions: 1,
-    watchTimeMs: 1000,
-  });
-  assert.deepEqual(
-    world.impressions.map((record) => record.event_id),
-    ["fresh"],
-  );
-  assert.equal(world.getWatchTimeMs(), 1000);
-});
-
-test("import-data rejects invalid modes and invalid files", async () => {
-  const world = createMemoryWorld();
-
-  const badMode = await invoke(world.deps, {
-    type: "import-data",
-    mode: "overwrite",
-    data: {},
-  } as unknown as ExtensionMessage);
-  assert.equal(badMode.syncReturn, false);
-  assert.equal(badMode.response.ok, false);
-
-  const badFile = await invoke(world.deps, {
-    type: "import-data",
-    mode: "merge",
-    data: { formatVersion: 999 },
-  });
-  assert.equal(badFile.syncReturn, true);
-  assert.equal(badFile.response.ok, false);
 });

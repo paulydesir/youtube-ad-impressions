@@ -1,15 +1,7 @@
 // Chrome message routing for the service worker. Delegates to the injected
-// stores and forwarder; knows nothing about IndexedDB, HTTP, or record
-// mapping. Testable with in-memory fakes — no service worker required.
+// stores. Testable with in-memory fakes — no service worker required.
 import { aggregateImpressions } from "./analytics.ts";
 import type { ImpressionAnalytics } from "./analytics.ts";
-import {
-  backupWatchTimeMs,
-  buildBackupFile,
-  dedupeKey,
-  parseBackupFile,
-} from "./backup.ts";
-import type { BackupFile, ImportMode } from "./backup.ts";
 import type { ImpressionStore } from "./storage/impression-store.ts";
 import type { WatchTimeStore } from "./storage/watch-time-store.ts";
 import type { AdImpressionRecord, ExtensionMessage } from "./types.ts";
@@ -17,13 +9,11 @@ import type { AdImpressionRecord, ExtensionMessage } from "./types.ts";
 export interface MessageHandlerDeps {
   impressionStore: ImpressionStore;
   watchTimeStore: WatchTimeStore;
-  /** Best-effort server delivery; failures are quiet by contract. */
-  forwardRecord: (record: AdImpressionRecord) => Promise<void>;
 }
 
 interface RecordImpressionResponse {
   ok: boolean;
-  id?: IDBValidKey;
+  id?: string;
   error?: string;
 }
 
@@ -39,111 +29,13 @@ interface WatchTimeResponse {
   error?: string;
 }
 
-interface ExportDataResponse {
-  ok: boolean;
-  backup?: BackupFile;
-  error?: string;
-}
-
-interface ImportDataResponse {
-  ok: boolean;
-  imported?: number;
-  skipped?: number;
-  totalImpressions?: number;
-  watchTimeMs?: number;
-  error?: string;
-}
-
 export type MessageResponse =
   | RecordImpressionResponse
   | DashboardResponse
-  | WatchTimeResponse
-  | ExportDataResponse
-  | ImportDataResponse;
-
-export interface ImportSummary {
-  imported: number;
-  skipped: number;
-  totalImpressions: number;
-  watchTimeMs: number;
-}
+  | WatchTimeResponse;
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-// Persistence is authoritative. Delivery starts only after it succeeds and is
-// intentionally detached so an offline server cannot delay or roll it back.
-export async function persistThenForward<T>(
-  record: AdImpressionRecord,
-  persist: (record: AdImpressionRecord) => Promise<T>,
-  forward: (record: AdImpressionRecord) => Promise<void>,
-): Promise<T> {
-  const result = await persist(record);
-  void forward(record).catch(() => undefined);
-  return result;
-}
-
-async function exportBackup(
-  impressionStore: ImpressionStore,
-  watchTimeStore: WatchTimeStore,
-): Promise<BackupFile> {
-  const [impressions, watchTimeMs] = await Promise.all([
-    impressionStore.getStoredImpressions(),
-    watchTimeStore.getWatchTime(),
-  ]);
-  return buildBackupFile(impressions, watchTimeMs);
-}
-
-async function importBackup(
-  impressionStore: ImpressionStore,
-  watchTimeStore: WatchTimeStore,
-  mode: ImportMode,
-  data: unknown,
-): Promise<ImportSummary> {
-  const parsed = parseBackupFile(data);
-  if (!parsed.ok) throw new Error(parsed.error);
-  const incomingWatchTimeMs = backupWatchTimeMs(parsed.file);
-
-  if (mode === "replace") {
-    await impressionStore.replaceAll(
-      parsed.file.impressions,
-      incomingWatchTimeMs,
-    );
-    return {
-      imported: parsed.file.impressions.length,
-      skipped: 0,
-      totalImpressions: parsed.file.impressions.length,
-      watchTimeMs: incomingWatchTimeMs,
-    };
-  }
-
-  const seen = new Set(
-    (await impressionStore.getStoredImpressions()).map(dedupeKey),
-  );
-  const fresh: AdImpressionRecord[] = [];
-  let skipped = 0;
-  for (const record of parsed.file.impressions) {
-    const key = dedupeKey(record);
-    if (seen.has(key)) {
-      skipped += 1;
-      continue;
-    }
-    seen.add(key);
-    const { id: _dropped, ...rest } = record;
-    fresh.push(rest);
-  }
-
-  if (fresh.length) {
-    await impressionStore.bulkAdd(fresh);
-  }
-  const watchTimeMs = Math.max(
-    await watchTimeStore.getWatchTime(),
-    incomingWatchTimeMs,
-  );
-  await watchTimeStore.setWatchTime(watchTimeMs);
-  const totalImpressions = (await impressionStore.getStoredImpressions()).length;
-  return { imported: fresh.length, skipped, totalImpressions, watchTimeMs };
 }
 
 function handleMessage(
@@ -151,23 +43,26 @@ function handleMessage(
   message: ExtensionMessage,
   sendResponse: (response: MessageResponse) => void,
 ): boolean {
-  const { impressionStore, watchTimeStore, forwardRecord } = deps;
+  const { impressionStore, watchTimeStore } = deps;
 
   if (message.type === "record-impression") {
-    persistThenForward(
-      message.record,
-      (record) => impressionStore.addImpression(record),
-      forwardRecord,
-    )
+    console.info(`[YouTube Ad Impressions] beginning server write`, {
+      eventId: message.record.event_id,
+    });
+    impressionStore.addImpression(message.record)
       .then((id) => {
         console.info(
-          `[YouTube Ad Impressions] stored impression ${message.record.event_id} in IndexedDB`,
+          `[YouTube Ad Impressions] stored impression ${message.record.event_id} on server`,
         );
         sendResponse({ ok: true, id });
       })
-      .catch((error: unknown) =>
-        sendResponse({ ok: false, error: toErrorMessage(error) }),
-      );
+      .catch((error: unknown) => {
+        console.error(`[YouTube Ad Impressions] server write failed`, {
+          eventId: message.record.event_id,
+          error: toErrorMessage(error),
+        });
+        sendResponse({ ok: false, error: toErrorMessage(error) });
+      });
     return true;
   }
 
@@ -193,28 +88,6 @@ function handleMessage(
     watchTimeStore
       .addWatchTime(message.milliseconds)
       .then(() => sendResponse({ ok: true }))
-      .catch((error: unknown) =>
-        sendResponse({ ok: false, error: toErrorMessage(error) }),
-      );
-    return true;
-  }
-
-  if (message.type === "export-data") {
-    exportBackup(impressionStore, watchTimeStore)
-      .then((backup) => sendResponse({ ok: true, backup }))
-      .catch((error: unknown) =>
-        sendResponse({ ok: false, error: toErrorMessage(error) }),
-      );
-    return true;
-  }
-
-  if (message.type === "import-data") {
-    if (message.mode !== "merge" && message.mode !== "replace") {
-      sendResponse({ ok: false, error: 'Import mode must be "merge" or "replace".' });
-      return false;
-    }
-    importBackup(impressionStore, watchTimeStore, message.mode, message.data)
-      .then((summary) => sendResponse({ ok: true, ...summary }))
       .catch((error: unknown) =>
         sendResponse({ ok: false, error: toErrorMessage(error) }),
       );

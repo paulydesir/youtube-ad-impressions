@@ -28,7 +28,19 @@ declare global {
   var __youtubeAdImpressionWatcher: WatcherDiagnostic | undefined;
 }
 
-const transport = createContentTransport({ hostVideoId });
+const transport = createContentTransport({
+  hostVideoId,
+  onInvalidated() {
+    window.clearInterval(watchTimer);
+    window.removeEventListener("pagehide", onPageHide);
+    observer.destroy("extension-invalidated");
+    impressionMetadata.clear();
+    diagnostic.status = "reload-required";
+    diagnostic.error = "Refresh this YouTube tab to resume tracking.";
+    diagnostic.refresh = undefined;
+    document.documentElement.dataset["youtubeAdImpressionWatcher"] = "reload-required";
+  },
+});
 
 const diagnostic: WatcherDiagnostic = {
   status: "starting",
@@ -76,11 +88,12 @@ const watchTime = createWatchTimeTracker({
 });
 
 const watchTimer = window.setInterval(() => watchTime.sample(), 1000);
-window.addEventListener("pagehide", () => {
+function onPageHide() {
   window.clearInterval(watchTimer);
   watchTime.flush();
   observer.destroy("pagehide");
-});
+}
+window.addEventListener("pagehide", onPageHide);
 
 diagnostic.status = "ready";
 diagnostic.refresh = () => observer.refresh();

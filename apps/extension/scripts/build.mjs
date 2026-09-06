@@ -40,10 +40,12 @@ await esbuild.build({
   platform: "browser",
 });
 
-// Popup script: runs in a plain `<script>` tag, so IIFE as well.
+// React popup: bundle the production runtime locally for Manifest V3.
 await esbuild.build({
   ...shared,
-  entryPoints: [join(root, "popup/popup.ts")],
+  entryPoints: [join(root, "popup/popup.tsx")],
+  define: { "process.env.NODE_ENV": '"production"' },
+  minify: true,
   outfile: join(dist, "popup/popup.js"),
   format: "iife",
   platform: "browser",

@@ -1,5 +1,5 @@
 // Shared shapes crossing the content-script → service-worker → popup boundary.
-// Field names use the snake_case storage schema (IndexedDB `impressions` store).
+// Field names match the capture model used across extension messages.
 
 export interface AdImpressionRecord {
   /** Present on all newly captured rows; absent only on legacy backups/rows. */
@@ -49,24 +49,10 @@ export interface AddWatchTimeMessage {
   milliseconds: number;
 }
 
-export interface ExportDataMessage {
-  type: "export-data";
-}
-
-export interface ImportDataMessage {
-  type: "import-data";
-  /** "merge" skips records already stored; "replace" clears first. */
-  mode: "merge" | "replace";
-  /** Raw parsed JSON of a backup file; validated in the service worker. */
-  data: unknown;
-}
-
 export type ExtensionMessage =
   | RecordImpressionMessage
   | GetDashboardMessage
-  | AddWatchTimeMessage
-  | ExportDataMessage
-  | ImportDataMessage;
+  | AddWatchTimeMessage;
 
 export function isExtensionMessage(value: unknown): value is ExtensionMessage {
   if (typeof value !== "object" || value === null) return false;
@@ -74,8 +60,6 @@ export function isExtensionMessage(value: unknown): value is ExtensionMessage {
   return (
     type === "record-impression" ||
     type === "get-dashboard" ||
-    type === "add-watch-time" ||
-    type === "export-data" ||
-    type === "import-data"
+    type === "add-watch-time"
   );
 }

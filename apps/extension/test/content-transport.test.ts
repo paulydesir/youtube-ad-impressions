@@ -141,3 +141,61 @@ test("publish emits a page event with host and observation time", () => {
     globalScope["CustomEvent"] = savedCustomEvent;
   }
 });
+
+for (const failure of ["missing-id", "throw", "callback"] as const) {
+  test(`invalidated runtime (${failure}) stops messaging and notifies once`, (t) => {
+    let sends = 0;
+    let stopped = 0;
+    const logs: string[] = [];
+    const runtime = {
+      id: failure === "missing-id" ? undefined : "extension-id",
+      lastError: undefined as { message: string } | undefined,
+      sendMessage(_message: unknown, callback: (response?: unknown) => void) {
+        sends++;
+        if (failure === "throw") throw new Error("Extension context invalidated.");
+        runtime.lastError = { message: "Extension context invalidated." };
+        callback();
+        runtime.lastError = undefined;
+      },
+    };
+    const scope = globalThis as Record<string, unknown>;
+    const previous = scope.chrome;
+    scope.chrome = { runtime };
+    t.after(() => { scope.chrome = previous; });
+    const transport = createContentTransport({
+      onInvalidated: () => { stopped++; transport.sendWatchTime(1); },
+      info: message => logs.push(message),
+      warn: () => assert.fail("Expected reloads should not emit extension warnings"),
+    });
+    transport.sendWatchTime(1000);
+    transport.sendWatchTime(1000);
+    assert.equal(sends, failure === "missing-id" ? 0 : 1);
+    assert.equal(stopped, 1);
+    assert.equal(logs.length, 1);
+  });
+}
+
+test("temporary worker failure consumes lastError and allows recovery", (t) => {
+  let sends = 0;
+  let reads = 0;
+  let responses = 0;
+  const warnings: string[] = [];
+  const scope = globalThis as Record<string, unknown>;
+  const previous = scope.chrome;
+  scope.chrome = { runtime: {
+    id: "extension-id",
+    get lastError() { reads++; return sends === 1 ? { message: "Receiving end does not exist." } : undefined; },
+    sendMessage(_message: unknown, callback: (response: unknown) => void) { sends++; callback({ ok: true }); },
+  } };
+  t.after(() => { scope.chrome = previous; });
+  const transport = createContentTransport({
+    onInvalidated: () => assert.fail("Temporary failure must not stop the watcher"),
+    warn: message => warnings.push(message),
+  });
+  transport.sendWatchTime(1000);
+  transport.sendExtensionMessage({ type: "add-watch-time", milliseconds: 1000 }, () => { responses++; });
+  assert.equal(sends, 2);
+  assert.equal(responses, 1);
+  assert.ok(reads >= 2);
+  assert.equal(warnings.length, 1);
+});
