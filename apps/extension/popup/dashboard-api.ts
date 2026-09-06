@@ -1,10 +1,8 @@
 import type { ImpressionAnalytics } from "../src/analytics.ts";
-import type { BackupFile } from "../src/backup.ts";
+import { INGEST_TOKEN_STORAGE_KEY } from "../src/api/impression-api-client.ts";
 import type {
   AdImpressionRecord,
-  ExportDataMessage,
   GetDashboardMessage,
-  ImportDataMessage,
 } from "../src/types.ts";
 
 interface DashboardSuccess {
@@ -20,19 +18,10 @@ interface DashboardFailure {
 
 type DashboardResponse = DashboardSuccess | DashboardFailure | undefined;
 
-interface ExportResponse {
-  ok: boolean;
-  backup?: BackupFile;
-  error?: string;
-}
-
-interface ImportResponse {
-  ok: boolean;
-  imported?: number;
-  skipped?: number;
-  totalImpressions?: number;
-  watchTimeMs?: number;
-  error?: string;
+export async function saveIngestToken(value: string): Promise<void> {
+  const token = value.trim();
+  if (!token) throw new Error("Enter the server's INGEST_API_TOKEN.");
+  await chrome.storage.local.set({ [INGEST_TOKEN_STORAGE_KEY]: token });
 }
 
 export function formatDuration(milliseconds: number): string {
@@ -43,22 +32,7 @@ export function formatDuration(milliseconds: number): string {
   return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`;
 }
 
-function backupFileName(): string {
-  return `youtube-ad-impressions-${new Date().toISOString().slice(0, 10)}.json`;
-}
-
-export function downloadBackup(backup: BackupFile): void {
-  const blob = new Blob([JSON.stringify(backup)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = backupFileName();
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-
-export function sendMessage<T>(message: GetDashboardMessage | ExportDataMessage | ImportDataMessage): Promise<T> {
+export function sendMessage<T>(message: GetDashboardMessage): Promise<T> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(message, (response: T | undefined) => {
       const error = chrome.runtime.lastError;
@@ -69,4 +43,4 @@ export function sendMessage<T>(message: GetDashboardMessage | ExportDataMessage 
   });
 }
 
-export type { DashboardResponse, ExportResponse, ImportResponse };
+export type { DashboardResponse };

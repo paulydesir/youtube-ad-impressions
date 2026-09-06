@@ -112,6 +112,21 @@ describe("POST /api/v1/impressions", () => {
   });
 });
 
+describe("GET /api/v1/impressions", () => {
+  it("returns stored records newest first", async () => {
+    await auth(request(app).post("/api/v1/impressions")).send(impression("evt-read"));
+    const response = await auth(request(app).get("/api/v1/impressions"));
+    assert.equal(response.status, 200);
+    assert.equal(response.body.records.length, 1);
+    assert.equal(response.body.records[0].eventId, "evt-read");
+  });
+
+  it("requires authorization", async () => {
+    const response = await request(app).get("/api/v1/impressions");
+    assert.equal(response.status, 401);
+  });
+});
+
 describe("POST /api/v1/impressions/batch", () => {
   it("reports accepted, duplicate, and rejected counts", async () => {
     await auth(request(app).post("/api/v1/impressions")).send(impression("evt-seen"));

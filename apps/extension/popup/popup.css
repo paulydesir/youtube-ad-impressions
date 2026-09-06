@@ -208,6 +208,43 @@ h2 {
 
 .empty { color: var(--muted); font-size: 13px; padding: 18px 0; }
 
+.server-connection {
+  margin-bottom: 18px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  font-size: 12px;
+}
+
+.server-connection summary { cursor: pointer; font-weight: 600; }
+.server-connection form { margin-top: 12px; }
+.server-connection label { display: block; }
+.server-connection .hint { color: var(--muted); overflow-wrap: anywhere; }
+.server-connection input {
+  width: 100%;
+  min-width: 0;
+  margin-top: 10px;
+  padding: 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.connection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.connection-actions button {
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--card-hover);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.connection-actions button:disabled { opacity: .5; cursor: default; }
+.server-connection :is(input, button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* Backup */
 
 .backup-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }

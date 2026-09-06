@@ -1,12 +1,51 @@
 import { useEffect, useRef, useState } from "react";
 import type { AdvertiserSummary } from "../src/analytics.ts";
-import type { ImportMode } from "../src/backup.ts";
 import type { AdImpressionRecord } from "../src/types.ts";
-import { downloadBackup, formatDuration, sendMessage } from "./dashboard-api.ts";
-import type { DashboardResponse, ExportResponse, ImportResponse } from "./dashboard-api.ts";
+import { formatDuration, saveIngestToken, sendMessage } from "./dashboard-api.ts";
+import type { DashboardResponse } from "./dashboard-api.ts";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+
+function ServerConnection({ failed, loading, onRetry }: {
+  failed: boolean;
+  loading: boolean;
+  onRetry: () => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const busy = loading || saving;
+
+  return <details className="server-connection" open={failed}>
+    <summary>Server connection</summary>
+    <form onSubmit={async event => {
+      event.preventDefault();
+      if (busy) return;
+      setSaving(true);
+      setError(null);
+      try {
+        await saveIngestToken(input.current?.value ?? "");
+        if (input.current) input.current.value = "";
+        onRetry();
+      } catch (error) {
+        setError(errorMessage(error));
+      } finally {
+        setSaving(false);
+      }
+    }}>
+      <label htmlFor="server-token">Server API token</label>
+      <p id="server-token-hint" className="hint">Paste INGEST_API_TOKEN from apps/server/.env. This connects the extension to your local server.</p>
+      <input id="server-token" ref={input} type="password" required autoComplete="off" spellCheck={false}
+        aria-describedby="server-token-hint" disabled={busy} placeholder="Enter server API token" />
+      <div className="connection-actions">
+        <button type="submit" disabled={busy}>{saving ? "Saving…" : "Save & connect"}</button>
+        <button type="button" disabled={busy} onClick={onRetry}>{loading ? "Connecting…" : "Retry connection"}</button>
+      </div>
+      {error && <p className="status" role="alert">{error}</p>}
+    </form>
+  </details>;
+}
 
 function Chip({ name }: { name: string }) {
   return <span className="chip" aria-hidden="true">{(name.trim()[0] ?? "?").toUpperCase()}</span>;
@@ -39,87 +78,32 @@ function RecentImpressions({ records }: { records: AdImpressionRecord[] }) {
   </div>;
 }
 
-function BackupControls({ onImported }: { onImported: () => void }) {
-  const [status, setStatus] = useState("Export a JSON copy, or restore one.");
-  const [mode, setMode] = useState<ImportMode>("merge");
-  const [busy, setBusy] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
-
-  async function exportData() {
-    setBusy(true);
-    setStatus("Preparing export…");
-    try {
-      const response = await sendMessage<ExportResponse>({ type: "export-data" });
-      if (!response.ok || !response.backup) throw new Error(response.error ?? "unknown error");
-      downloadBackup(response.backup);
-      setStatus(`Exported ${response.backup.impressions.length} impressions.`);
-    } catch (error) {
-      setStatus(`Export failed: ${errorMessage(error)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function importData(file: File) {
-    setBusy(true);
-    setStatus(`Importing ${file.name} (${mode})…`);
-    try {
-      const text = await file.text();
-      let data: unknown;
-      try { data = JSON.parse(text); } catch { throw new Error("File is not valid JSON."); }
-      const response = await sendMessage<ImportResponse>({ type: "import-data", mode, data });
-      if (!response.ok) throw new Error(response.error ?? "unknown error");
-      setStatus(`Imported ${response.imported ?? 0}, skipped ${response.skipped ?? 0} duplicates. Total: ${response.totalImpressions ?? 0}.`);
-      onImported();
-    } catch (error) {
-      setStatus(`Import failed: ${errorMessage(error)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return <section aria-labelledby="backup-heading">
-    <div className="section-head"><h2 id="backup-heading">Backup &amp; Restore</h2></div>
-    <p id="backup-status" className="status" role="status">{status}</p>
-    <div className="backup-row">
-      <button id="export" type="button" disabled={busy} onClick={exportData}>Export JSON</button>
-      <button id="import-trigger" type="button" disabled={busy} onClick={() => input.current?.click()}>Import JSON</button>
-      <input id="import-file" ref={input} type="file" accept=".json,application/json" hidden disabled={busy} onChange={event => {
-        const file = event.currentTarget.files?.[0];
-        event.currentTarget.value = "";
-        if (file) void importData(file);
-      }} />
-      <div className="segmented" role="radiogroup" aria-label="Import mode">
-        {(["merge", "replace"] as const).map(value => <label key={value}>
-          <input type="radio" name="import-mode" value={value} checked={mode === value} disabled={busy} onChange={() => setMode(value)} />
-          <span>{value === "merge" ? "Merge" : "Replace"}</span>
-        </label>)}
-      </div>
-    </div>
-    <p className="hint">Merge skips duplicates. Replace clears local history first.</p>
-  </section>;
-}
-
 export function App() {
   const [dashboard, setDashboard] = useState<DashboardResponse>();
-  const [failed, setFailed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     let active = true;
-    setFailed(false);
+    setLoading(true);
+    setDashboard(undefined);
     sendMessage<DashboardResponse>({ type: "get-dashboard" }).then(response => {
       if (!active) return;
-      if (!response?.ok) setFailed(true);
-      else setDashboard(response);
-    }).catch(() => { if (active) setFailed(true); });
+      if (!response?.ok) setError(response?.error ?? "The server did not return a dashboard.");
+      else {
+        setError(null);
+        setDashboard(response);
+      }
+    }).catch(error => { if (active) setError(errorMessage(error)); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [revision]);
 
   const data = dashboard?.ok ? dashboard : undefined;
   const analytics = data?.analytics;
-  const status = failed ? "Could not open the local ad database." : !analytics ? "Loading local history…"
-    : analytics.totalImpressions ? `Average ad: ${formatDuration(analytics.averageAdMs)} · Stored only on this browser`
-    : "Stored only on this browser";
+  const status = loading ? "Loading server history…" : error ?? (!analytics ? "No dashboard available."
+    : analytics.totalImpressions ? `Average ad: ${formatDuration(analytics.averageAdMs)} · Stored in PostgreSQL`
+    : "Stored in PostgreSQL");
   const metrics = [
     ["total-impressions", "Impressions", analytics ? String(analytics.totalImpressions) : "—"],
     ["total-time", "Ad time", analytics ? formatDuration(analytics.totalAdMs) : "—"],
@@ -132,6 +116,7 @@ export function App() {
       <h1>YouTube Ad Impressions</h1>
       <p id="status" className="status" role="status">{status}</p>
     </header>
+    <ServerConnection failed={Boolean(error)} loading={loading} onRetry={() => setRevision(value => value + 1)} />
     <section className="metrics" aria-label="Summary">
       {metrics.map(([id, label, value]) => <article className="metric" key={id}>
         <span className="metric-label">{label}</span><strong className="metric-value" id={id}>{value}</strong>
@@ -145,7 +130,6 @@ export function App() {
       <div className="section-head"><h2 id="recent-heading">Recent Impressions</h2></div>
       {data && <RecentImpressions records={data.records} />}
     </section>
-    <BackupControls onImported={() => setRevision(value => value + 1)} />
-    <footer className="footnote">Stored only on this browser</footer>
+    <footer className="footnote">Stored in PostgreSQL</footer>
   </main>;
 }

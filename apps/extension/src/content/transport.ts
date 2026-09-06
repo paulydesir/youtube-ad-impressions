@@ -17,6 +17,7 @@ export interface ChromeMessageSender {
 
 export interface ContentTransportOptions {
   sender?: ChromeMessageSender;
+  onInvalidated?: () => void;
   eventName?: string;
   hostVideoId?: () => string | null;
   warn?: (message: string) => void;
@@ -49,13 +50,30 @@ export function createContentTransport(
     info = (message, detail) => console.info(message, detail),
     now = () => new Date().toISOString(),
   } = options;
+  let invalidated = false;
   let runtimeUnavailableLogged = false;
+
+  function invalidate(): void {
+    if (invalidated) return;
+    invalidated = true;
+    info("[YouTube Ad Impressions] extension reloaded; refresh this YouTube tab to resume tracking");
+    options.onInvalidated?.();
+  }
+
+  function handleFailure(detail: unknown): void {
+    const message = detail instanceof Error ? detail.message : String(detail);
+    if (!globalThis.chrome?.runtime?.id || /extension context invalidated/i.test(message)) {
+      invalidate();
+    } else {
+      warnRuntimeUnavailable();
+    }
+  }
 
   function warnRuntimeUnavailable(): void {
     if (runtimeUnavailableLogged) return;
     runtimeUnavailableLogged = true;
     warn(
-      "[YouTube Ad Impressions] extension context unavailable; reload this YouTube tab after reloading the extension",
+      "[YouTube Ad Impressions] could not contact the background worker; will retry on the next message",
     );
   }
 
@@ -63,19 +81,24 @@ export function createContentTransport(
     message: ExtensionMessage,
     onResponse?: (response: unknown) => void,
   ): void {
+    if (invalidated) return;
     try {
+      if (!globalThis.chrome?.runtime?.id) {
+        invalidate();
+        return;
+      }
       chrome.runtime.sendMessage(message, (response: unknown) => {
         if (chrome.runtime.lastError) {
-          warnRuntimeUnavailable();
+          handleFailure(chrome.runtime.lastError.message);
           return;
         }
         runtimeUnavailableLogged = false;
         onResponse?.(response);
       });
-    } catch {
+    } catch (failure) {
       // Reloading an unpacked extension invalidates already-running content
       // scripts; sendMessage throws before lastError can report the problem.
-      warnRuntimeUnavailable();
+      handleFailure(failure);
     }
   }
 
@@ -101,11 +124,20 @@ export function createContentTransport(
   }
 
   function sendRecordImpression(record: IdentifiedAdImpressionRecord): void {
+    info("[YouTube Ad Impressions] sending impression to service worker", {
+      eventId: record.event_id,
+      advertiser: record.advertiser_name ?? record.advertiser_url,
+    });
     const message: ExtensionMessage = { type: "record-impression", record };
     sendExtensionMessage(message, (value) => {
-      const response = value as { ok?: boolean } | undefined;
+      const response = value as { ok?: boolean; id?: string; error?: string } | undefined;
       if (!response?.ok) {
         error("[YouTube Ad Impressions] failed to save impression", response);
+      } else {
+        info("[YouTube Ad Impressions] service worker confirmed impression", {
+          eventId: record.event_id,
+          storedId: response.id,
+        });
       }
     });
   }

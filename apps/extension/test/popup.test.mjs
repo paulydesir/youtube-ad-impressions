@@ -19,10 +19,10 @@ async function waitFor(check) {
   assert.fail("Popup did not reach the expected state");
 }
 
-function mount(t, respond) {
+function mount(t, respond, saveToken = async () => {}) {
   const dom = new JSDOM('<div id="root"></div>', { runScripts: "outside-only", url: "https://extension.test" });
   t.after(() => dom.window.close());
-  dom.window.chrome = { runtime: { sendMessage: respond } };
+  dom.window.chrome = { runtime: { sendMessage: respond }, storage: { local: { set: saveToken } } };
   dom.window.eval(outputFiles[0].text);
   return dom.window;
 }
@@ -44,41 +44,45 @@ test("React popup renders analytics, escaped advertiser text and recent history"
 
 test("React popup reports worker connection errors", async t => {
   const window = mount(t, () => { throw new Error("Disconnected"); });
-  await waitFor(() => window.document.querySelector("#status")?.textContent.includes("Could not open"));
+  await waitFor(() => window.document.querySelector("#status")?.textContent.includes("Disconnected"));
 });
 
-test("React popup imports in selected mode, locks controls and refreshes history", async t => {
+test("missing token setup saves the worker's key and reconnects without reloading", async t => {
+  let token;
   let reads = 0;
-  let finishImport;
-  const window = mount(t, (message, callback) => {
-    if (message.type === "get-dashboard") { reads++; callback(dashboard([])); }
-    else {
-      assert.equal(message.type, "import-data");
-      assert.equal(message.mode, "replace");
-      assert.deepEqual(JSON.parse(JSON.stringify(message.data)), { impressions: [] });
-      finishImport = callback;
-    }
-  });
-  await waitFor(() => window.document.querySelector("#advertisers .empty"));
-  window.document.querySelector('input[value="replace"]').click();
-  const input = window.document.querySelector("#import-file");
-  Object.defineProperty(input, "files", { value: [{ name: "backup.json", text: async () => '{"impressions":[]}' }] });
-  input.dispatchEvent(new window.Event("change", { bubbles: true }));
-  await waitFor(() => finishImport && window.document.querySelector("#export").disabled);
-  finishImport({ ok: true, imported: 2, skipped: 1, totalImpressions: 2 });
-  await waitFor(() => reads === 2 && !window.document.querySelector("#export").disabled);
-  assert.match(window.document.querySelector("#backup-status").textContent, /Imported 2, skipped 1 duplicates/);
-});
-
-test("React popup reports invalid JSON without sending an import", async t => {
   const window = mount(t, (message, callback) => {
     assert.equal(message.type, "get-dashboard");
-    callback(dashboard([]));
+    reads++;
+    callback(token ? dashboard([sampleImpression()]) : { ok: false, error: "Server API token is missing." });
+  }, async values => {
+    assert.deepEqual(Object.keys(values), ["localServerIngestToken"]);
+    token = values.localServerIngestToken;
   });
-  await waitFor(() => window.document.querySelector("#import-file"));
-  const input = window.document.querySelector("#import-file");
-  Object.defineProperty(input, "files", { value: [{ name: "bad.json", text: async () => "{" }] });
-  input.dispatchEvent(new window.Event("change", { bubbles: true }));
-  await waitFor(() => window.document.querySelector("#backup-status").textContent.includes("File is not valid JSON"));
-  assert.equal(window.document.querySelector("#export").disabled, false);
+  const document = window.document;
+  await waitFor(() => document.querySelector("#status")?.textContent === "Server API token is missing.");
+  assert.equal(document.querySelector(".server-connection").open, true);
+  const input = document.querySelector("#server-token");
+  assert.equal(input.type, "password");
+  input.value = "  test-token  ";
+  document.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await waitFor(() => document.querySelector("#total-impressions").textContent === "1");
+  assert.equal(token, "test-token");
+  assert.equal(reads, 2);
+  assert.equal(input.value, "");
+  assert.equal(document.querySelector(".server-connection").open, false);
+});
+
+test("token storage failures remain visible and do not retry the API", async t => {
+  let reads = 0;
+  const window = mount(t, (_message, callback) => {
+    reads++;
+    callback({ ok: false, error: "Server API token is missing." });
+  }, async () => { throw new Error("Storage unavailable"); });
+  const document = window.document;
+  await waitFor(() => document.querySelector(".server-connection")?.open);
+  document.querySelector("#server-token").value = "test-token";
+  document.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes("Storage unavailable"));
+  assert.equal(reads, 1);
+  assert.equal(document.querySelector('button[type="submit"]').disabled, false);
 });

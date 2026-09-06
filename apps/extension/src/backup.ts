@@ -1,5 +1,5 @@
 // Versioned JSON backup format for export/import ("Backup & restore").
-// Pure module: no chrome/IndexedDB access, so it is unit-testable and can be
+// Legacy JSON-backup parser retained for importing old browser exports into the server.
 // bundled into both the service worker and the popup.
 //
 // File shape (matches youtube-ad-impressions-YYYY-MM-DD.json):
@@ -138,7 +138,7 @@ export function buildBackupFile(
     formatVersion: BACKUP_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
     database: BACKUP_DATABASE_NAME,
-    // IndexedDB's auto-increment key is local implementation detail. Portable
+    // The old browser database's auto-increment key is a local implementation detail. Portable
     // identity comes exclusively from event_id.
     impressions: impressions.map(({ id: _localId, ...record }) => record),
     stats: [{ key: WATCH_TIME_KEY, value: watchTimeMs }],

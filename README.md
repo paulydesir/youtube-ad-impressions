@@ -1,7 +1,8 @@
 # YouTube Ad Impressions
 
 A privacy-first Chrome extension for observing, storing, and analyzing YouTube
-video-ad impressions. All history stays in extension-owned IndexedDB storage.
+video-ad impressions. Impression history is stored by the local companion
+server in PostgreSQL when `DATABASE_URL` is configured.
 
 This repository is a private npm-workspaces monorepo. The extension lives in
 `apps/extension`; `apps/server` and `packages/contracts` are reserved locations
@@ -29,7 +30,24 @@ npm run test:extension       # extension tests only
 4. Choose **Load unpacked** and select the `apps/extension` directory.
 5. Open a YouTube watch page and then open DevTools.
 
-Click the extension toolbar icon to open the local analytics dashboard.
+Start the companion server with `npm run dev`, using `apps/server/.env` for
+`DATABASE_URL`, `INGEST_API_TOKEN`, and the separate `MCP_API_TOKEN`.
+Click the extension toolbar icon, expand **Server connection**, paste the value
+of `INGEST_API_TOKEN` into **Server API token**, and click **Save & connect**.
+The extension saves this as `localServerIngestToken` in `chrome.storage.local`
+and immediately fetches the dashboard. New impressions use the same token.
+The extension cannot read the server's `.env` file automatically.
+
+A missing token prevents both GET and POST requests from being sent. A wrong
+token produces HTTP 401. The popup displays these errors and lets you update
+the token or retry. Inspect API calls in the extension's service-worker DevTools
+(the **service worker** link on `chrome://extensions`), rather than the YouTube
+tab's Network panel. Content dispatch logs appear in the YouTube tab console.
+Impressions that failed before configuration are not automatically replayed.
+
+After rebuilding and reloading the extension, refresh existing YouTube tabs too.
+Old content scripts cannot reconnect to the reloaded extension; they stop tracking
+and expose `reload-required` in the watcher diagnostic until the tab is refreshed.
 
 The content script logs a startup message plus `ad-start` and `ad-end` payloads prefixed with
 `[YouTube Ad Impressions]`. It also dispatches the same payloads on `document`:
@@ -88,12 +106,11 @@ bundled to a single IIFE. The service worker stays ESM (`"type": "module"`).
   pod position/size, avatar, media duration/state, skip availability, and player
   version from the active overlay.
 - Marks an impression when its skip button is clicked.
-- Commits completed impressions to the `impressions` store in `AdTrackerDB`.
+- Sends completed impressions to the authenticated local server API.
 - Tracks non-ad playback time to calculate ads per watch hour.
 - Shows impression count, total ad time, skip rate, advertiser rankings, and
   recent history in the extension popup.
-- Exports the IndexedDB contents to a versioned JSON backup from the popup,
-  and restores it via Merge (skips duplicates) or Replace (clears first).
+- Reads popup history from the server; browser database backup/restore is retired.
 - Calculates elapsed duration on the end transition.
 - Reattaches when YouTube replaces the player during SPA navigation.
 - Ends an active lifecycle if the player is replaced or the page is hidden.
