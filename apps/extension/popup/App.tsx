@@ -1,51 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { AdvertiserSummary } from "../src/analytics.ts";
 import type { AdImpressionRecord } from "../src/types.ts";
-import { formatDuration, saveIngestToken, sendMessage } from "./dashboard-api.ts";
+import { formatDuration, sendMessage } from "./dashboard-api.ts";
 import type { DashboardResponse } from "./dashboard-api.ts";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
-
-function ServerConnection({ failed, loading, onRetry }: {
-  failed: boolean;
-  loading: boolean;
-  onRetry: () => void;
-}) {
-  const input = useRef<HTMLInputElement>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const busy = loading || saving;
-
-  return <details className="server-connection" open={failed}>
-    <summary>Server connection</summary>
-    <form onSubmit={async event => {
-      event.preventDefault();
-      if (busy) return;
-      setSaving(true);
-      setError(null);
-      try {
-        await saveIngestToken(input.current?.value ?? "");
-        if (input.current) input.current.value = "";
-        onRetry();
-      } catch (error) {
-        setError(errorMessage(error));
-      } finally {
-        setSaving(false);
-      }
-    }}>
-      <label htmlFor="server-token">Server API token</label>
-      <p id="server-token-hint" className="hint">Paste INGEST_API_TOKEN from apps/server/.env. This connects the extension to your local server.</p>
-      <input id="server-token" ref={input} type="password" required autoComplete="off" spellCheck={false}
-        aria-describedby="server-token-hint" disabled={busy} placeholder="Enter server API token" />
-      <div className="connection-actions">
-        <button type="submit" disabled={busy}>{saving ? "Saving…" : "Save & connect"}</button>
-        <button type="button" disabled={busy} onClick={onRetry}>{loading ? "Connecting…" : "Retry connection"}</button>
-      </div>
-      {error && <p className="status" role="alert">{error}</p>}
-    </form>
-  </details>;
-}
 
 function Chip({ name }: { name: string }) {
   return <span className="chip" aria-hidden="true">{(name.trim()[0] ?? "?").toUpperCase()}</span>;
@@ -116,7 +76,7 @@ export function App() {
       <h1>YouTube Ad Impressions</h1>
       <p id="status" className="status" role="status">{status}</p>
     </header>
-    <ServerConnection failed={Boolean(error)} loading={loading} onRetry={() => setRevision(value => value + 1)} />
+    <button disabled={loading} onClick={() => setRevision(value => value + 1)}>Refresh history</button>
     <section className="metrics" aria-label="Summary">
       {metrics.map(([id, label, value]) => <article className="metric" key={id}>
         <span className="metric-label">{label}</span><strong className="metric-value" id={id}>{value}</strong>

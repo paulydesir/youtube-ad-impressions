@@ -1,5 +1,4 @@
 import type { ImpressionAnalytics } from "../src/analytics.ts";
-import { INGEST_TOKEN_STORAGE_KEY } from "../src/api/impression-api-client.ts";
 import type {
   AdImpressionRecord,
   GetDashboardMessage,
@@ -17,12 +16,6 @@ interface DashboardFailure {
 }
 
 type DashboardResponse = DashboardSuccess | DashboardFailure | undefined;
-
-export async function saveIngestToken(value: string): Promise<void> {
-  const token = value.trim();
-  if (!token) throw new Error("Enter the server's INGEST_API_TOKEN.");
-  await chrome.storage.local.set({ [INGEST_TOKEN_STORAGE_KEY]: token });
-}
 
 export function formatDuration(milliseconds: number): string {
   const seconds = Math.round(milliseconds / 1000);

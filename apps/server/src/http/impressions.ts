@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { toAdImpressionV1 } from "@ad-impressions/contracts";
 import { ZodError } from "zod";
 import type { ImpressionStore } from "../repositories/store.js";
-import { requireIngestToken } from "./auth.js";
+import { requireSupabaseAuth, type VerifyAccessToken } from "./supabase-auth.js";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -19,11 +19,11 @@ function validationMessage(error: ZodError): string {
 
 export function createImpressionsRouter(
   store: ImpressionStore,
-  ingestToken: string,
+  verifyAccessToken: VerifyAccessToken | undefined,
   log: (message: string) => void = console.info,
 ): Router {
   const router = Router();
-  router.use(requireIngestToken(ingestToken));
+  router.use(requireSupabaseAuth(verifyAccessToken));
 
   // The extension dashboard reads its authoritative history from the server.
   router.get("/", async (req: Request, res: Response) => {

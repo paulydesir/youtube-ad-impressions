@@ -31,22 +31,18 @@ npm run test:extension       # extension tests only
 5. Open a YouTube watch page and then open DevTools.
 
 Start the companion server with `npm run dev`, using `apps/server/.env` for
-`DATABASE_URL`, `INGEST_API_TOKEN`, and the separate `MCP_API_TOKEN`.
-Click the extension toolbar icon, expand **Server connection**, paste the value
-of `INGEST_API_TOKEN` into **Server API token**, and click **Save & connect**.
-The extension saves this as `localServerIngestToken` in `chrome.storage.local`
-and immediately fetches the dashboard. New impressions use the same token.
-The extension cannot read the server's `.env` file automatically.
+`DATABASE_URL`, Supabase configuration, and the separate `MCP_API_TOKEN`.
+Sign in through the extension popup. All extension requests to the Node API use
+the current Supabase access token. There is no shared ingestion token to configure.
 
-A missing token prevents both GET and POST requests from being sent. A wrong
-token produces HTTP 401. The popup displays these errors and lets you update
-the token or retry. Inspect API calls in the extension's service-worker DevTools
-(the **service worker** link on `chrome://extensions`), rather than the YouTube
-tab's Network panel. Content dispatch logs appear in the YouTube tab console.
-Impressions that failed before configuration are not automatically replayed.
+The popup and background worker share Supabase session storage in
+`chrome.storage.local`, restricted to trusted extension contexts. Token refreshes
+and logout use Supabase’s built-in coordination. Requests read the current session;
+signed-out users cannot load or save impressions. Failed impressions are not
+queued for replay. Inspect API calls in the extension service-worker DevTools.
 
-After rebuilding and reloading the extension, refresh existing YouTube tabs too.
-Old content scripts cannot reconnect to the reloaded extension; they stop tracking
+Tracking attaches automatically to open YouTube tabs when the worker starts and
+after navigation. No popup interaction is required. Old content scripts stop tracking
 and expose `reload-required` in the watcher diagnostic until the tab is refreshed.
 
 The content script logs a startup message plus `ad-start` and `ad-end` payloads prefixed with
@@ -117,3 +113,48 @@ bundled to a single IIFE. The service worker stays ESM (`"type": "module"`).
 
 The actual advertiser landing URL is not available in the observed DOM; the
 extension stores the displayed advertiser domain instead.
+
+## Local email/password authentication
+
+Start the existing stack with `npx supabase start`, then apply the profile migration
+without resetting data: `npx supabase migration up --local`.
+
+Run `npx supabase status` and copy its **publishable** (or legacy **anon**) key into
+`SUPABASE_PUBLISHABLE_KEY` in both `apps/extension/.env` and `apps/server/.env`.
+Set `SUPABASE_URL=http://127.0.0.1:54321` in both files. The extension example is
+`apps/extension/.env.example`. Only these two public Supabase values are embedded
+at build time; never use the service-role key, secret key, or JWT signing secret.
+MCP retains its separate token; INGEST_API_TOKEN is no longer used.
+
+Run `npm run dev` and `npm run build:extension`, then load/reload `apps/extension`
+as an unpacked Chrome extension. Open the popup's Account section:
+
+1. Create an account with email, password, and optional name. Local email
+   confirmation is disabled in `supabase/config.toml`, so signup starts a session.
+2. In local Studio (`http://127.0.0.1:54323`), confirm the Auth user and matching
+   `public.profiles.id`. The trigger owns profile creation; its errors fail signup.
+3. Log out and log in. Close and reopen the popup to check session restoration.
+4. Click **Check /me**. It should show the email and UUID verified by the server.
+5. Log out and click **Check /me** again. It should report `401`.
+
+`GET /me` and all `/api/v1/impressions` routes use Supabase `auth.getClaims(token)` signature/expiry verification,
+checks issuer and audience, and derives identity from the verified `sub` claim.
+It ignores client user IDs. Profile RLS is enabled with no client policies because
+this slice does not need direct profile access. If the server public key is absent,
+these routes fail closed. Supabase access tokens already copied elsewhere may remain
+valid until expiry after logout; the extension clears its session and sends no token.
+
+Run `npm test` for normal tests. With local Supabase running and the migration
+applied, run `AUTH_INTEGRATION=1 npm run test --workspace @ad-impressions/server`.
+The integration test bundles the actual popup and exercises its forms in JSDOM
+against real local Supabase and an HTTP Node server: signup success/failure,
+profile UUID/name, login success/failure, restoration, bearer headers, `/me`,
+logout/401, expired JWT rejection, and deletion cascade. It also runs the background
+worker bundle in a separate context with shared extension storage, verifies ingestion
+and history loading, refreshes an expired session, and checks logout blocks worker
+requests. It removes its test user.
+It does not replace the manual unpacked-extension check above.
+
+Impression ownership, OAuth, and MCP authentication changes are outside this slice.
+Authenticated accounts currently access the same impression history; per-user
+record ownership and filtering remain a separate step.

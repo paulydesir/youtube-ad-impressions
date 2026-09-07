@@ -41,7 +41,7 @@ test("active worker write path makes a real HTTP POST once the token is configur
 
   const missing = await sendRecord();
   assert.equal(missing.ok, false);
-  assert.match(missing.error ?? "", /token is missing/);
+  assert.match(missing.error ?? "", /Sign in to your account/);
   assert.equal(requests.length, 0);
 
   token = "configured-test-secret";
@@ -61,6 +61,6 @@ test("active store distinguishes a rejected token from an unreachable server", a
     fetch: async () => Response.json({ error: "unauthorized" }, { status: 401 }),
     info: () => {}, error: () => {},
   });
-  await assert.rejects(store.getImpressions(), /rejected the API token \(HTTP 401\)/);
-  await assert.rejects(store.addImpression(sampleImpression()), /rejected the API token \(HTTP 401\)/);
+  await assert.rejects(store.getImpressions(), /session was rejected \(HTTP 401\)/);
+  await assert.rejects(store.addImpression(sampleImpression()), /session was rejected \(HTTP 401\)/);
 });

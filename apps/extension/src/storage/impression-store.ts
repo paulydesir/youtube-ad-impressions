@@ -1,7 +1,6 @@
 import type { AdImpressionRecord } from "../types.ts";
 import type { AdImpressionV1 } from "@ad-impressions/contracts";
 import { toAdImpressionV1 } from "../api/impression-mapper.ts";
-import { INGEST_TOKEN_STORAGE_KEY } from "../api/impression-api-client.ts";
 
 // Operations the application needs from the server-backed impression store.
 export interface ImpressionStore {
@@ -47,8 +46,8 @@ export function createServerImpressionStore(options: {
     const url = `${options.endpoint}${path}`;
     const token = await options.getToken();
     if (!token) {
-      error(`[YouTube Ad Impressions] ${method} ${url} not sent: ${INGEST_TOKEN_STORAGE_KEY} is missing from chrome.storage.local`);
-      throw new Error("Server API token is missing. Enter INGEST_API_TOKEN in Server connection below.");
+      error(`[YouTube Ad Impressions] ${method} ${url} not sent: no authenticated session`);
+      throw new Error("Sign in to your account to load and save impressions.");
     }
     const startedAt = performance.now();
     info(`[YouTube Ad Impressions] API request starting: ${method} ${url}`, { tokenConfigured: true });
@@ -63,7 +62,7 @@ export function createServerImpressionStore(options: {
         const responseText = await response.clone().text().catch(() => "");
         error(`[YouTube Ad Impressions] API rejected request: ${method} ${url}`, responseText || `HTTP ${response.status}`);
         if (response.status === 401) {
-          throw new Error("Server rejected the API token (HTTP 401). Check that it matches INGEST_API_TOKEN in apps/server/.env.");
+          throw new Error("Your session was rejected (HTTP 401). Please log in again.");
         }
         throw new Error(`Server returned HTTP ${response.status}. Check the local server console.`);
       }

@@ -28,6 +28,9 @@ declare global {
   var __youtubeAdImpressionWatcher: WatcherDiagnostic | undefined;
 }
 
+function startTracking() {
+  // Popup recovery and manifest injection may race; keep one observer per tab.
+  if (globalThis.__youtubeAdImpressionWatcher?.status === "ready") return;
 const transport = createContentTransport({
   hostVideoId,
   onInvalidated() {
@@ -92,6 +95,8 @@ function onPageHide() {
   window.clearInterval(watchTimer);
   watchTime.flush();
   observer.destroy("pagehide");
+  diagnostic.status = "stopped";
+  window.removeEventListener("pagehide", onPageHide);
 }
 window.addEventListener("pagehide", onPageHide);
 
@@ -106,3 +111,7 @@ Object.defineProperty(diagnostic, "active", {
 // content-script context, making installation checks unambiguous.
 document.documentElement.dataset["youtubeAdImpressionWatcher"] = "ready";
 console.info("[YouTube Ad Impressions] watcher ready");
+
+}
+
+startTracking();

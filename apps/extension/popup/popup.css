@@ -311,3 +311,8 @@ h2 {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+.auth-panel { padding: 20px; border-bottom: 1px solid #ccc; }
+.auth-panel label { display: grid; gap: 4px; margin: 10px 0; }
+.auth-panel button { margin: 6px 6px 6px 0; }
+.auth-panel p { overflow-wrap: anywhere; }

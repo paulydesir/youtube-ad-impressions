@@ -10,11 +10,13 @@ import { createMcpRouter } from "../mcp/router.js";
 import { requireBearerToken } from "./auth.js";
 import { createImpressionsRouter } from "./impressions.js";
 
+import { requireSupabaseAuth, type VerifyAccessToken, type AuthenticatedRequest } from "./supabase-auth.js";
+
 export interface AppOptions {
+  verifyAccessToken?: VerifyAccessToken;
   store: ImpressionStore;
   // Backend readiness probe. Async because PostgreSQL checks require I/O.
   isDatabaseReady: () => Promise<boolean>;
-  ingestToken: string;
   mcpToken: string;
   requestLog?: (message: string) => void;
   // Operational trace log (ingest outcomes, MCP tool calls). Defaults to
@@ -72,7 +74,12 @@ export function createApp(options: AppOptions): Express {
     res.status(503).json({ ok: false, database: "unavailable" });
   });
 
-  app.use("/api/v1/impressions", createImpressionsRouter(options.store, options.ingestToken, options.log));
+  app.get("/me", requireSupabaseAuth(options.verifyAccessToken), (req, res) => {
+    const auth = (req as AuthenticatedRequest).auth!;
+    res.json({ id: auth.userId, email: auth.email });
+  });
+
+  app.use("/api/v1/impressions", createImpressionsRouter(options.store, options.verifyAccessToken, options.log));
 
   app.use("/mcp", createMcpRouter(options.store, options.log));
 

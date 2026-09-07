@@ -21,5 +21,3 @@ export function requireBearerToken(expectedToken: string) {
     next();
   };
 }
-
-export const requireIngestToken = requireBearerToken;

@@ -83,7 +83,10 @@ async function startMcpClient(): Promise<Client> {
   const app = createApp({
     store: createSqliteStore(db),
     isDatabaseReady: () => Promise.resolve(isDatabaseReady(db)),
-    ingestToken: INGEST_TOKEN,
+    verifyAccessToken: async token => {
+      if (token !== INGEST_TOKEN) throw new Error("Invalid token");
+      return { userId: "9c3f24dd-50ab-4f8c-a389-a860dd3053ae", email: "test@example.com" };
+    },
     mcpToken: MCP_TOKEN,
   });
   httpServer = createServer(app);

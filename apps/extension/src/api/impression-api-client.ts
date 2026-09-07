@@ -2,7 +2,6 @@ import type { AdImpressionV1 } from "@ad-impressions/contracts";
 
 export const LOCAL_SERVER_ENDPOINT =
   "http://127.0.0.1:8787/api/v1/impressions";
-export const INGEST_TOKEN_STORAGE_KEY = "localServerIngestToken";
 export const FORWARD_TIMEOUT_MS = 2_000;
 
 type Fetch = typeof globalThis.fetch;
@@ -38,7 +37,7 @@ export function createImpressionApiClient(
       if (!token) {
         if (!missingTokenLogged) {
           info(
-            `[YouTube Ad Impressions] local forwarding disabled: set ${INGEST_TOKEN_STORAGE_KEY}`,
+            `[YouTube Ad Impressions] local forwarding disabled: sign in to your account`,
           );
           missingTokenLogged = true;
         }

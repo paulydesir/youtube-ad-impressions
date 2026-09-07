@@ -37,7 +37,10 @@ function testApp(requestLog?: (message: string) => void) {
     // Closes over the mutable `db` binding so the unavailability test below
     // (which closes the database) still observes the failure.
     isDatabaseReady: () => Promise.resolve(isDatabaseReady(db)),
-    ingestToken: TOKEN,
+    verifyAccessToken: async token => {
+      if (token !== TOKEN) throw new Error("Invalid token");
+      return { userId: "9c3f24dd-50ab-4f8c-a389-a860dd3053ae", email: "test@example.com" };
+    },
     mcpToken: MCP_TOKEN,
     requestLog,
   });
@@ -75,10 +78,10 @@ describe("loadConfig", () => {
     assert.deepEqual(
       loadConfig({ INGEST_API_TOKEN: TOKEN, MCP_API_TOKEN: MCP_TOKEN }),
       {
+      SUPABASE_URL: "http://127.0.0.1:54321",
       PORT: 8787,
       HOST: "127.0.0.1",
       DATABASE_FILE: "./data/ad-impressions.sqlite",
-      INGEST_API_TOKEN: TOKEN,
       MCP_API_TOKEN: MCP_TOKEN,
       LOG_LEVEL: "info",
       POSTGRES_USER: "ad_impressions",
@@ -89,24 +92,18 @@ describe("loadConfig", () => {
     );
   });
 
-  it("rejects a missing ingestion token", () => {
-    assert.throws(() => loadConfig({ MCP_API_TOKEN: MCP_TOKEN }), /INGEST_API_TOKEN/);
+  it("does not require an ingestion token", () => {
+    assert.doesNotThrow(() => loadConfig({ MCP_API_TOKEN: MCP_TOKEN }));
   });
-
-  it("rejects a missing or reused MCP token", () => {
-    assert.throws(() => loadConfig({ INGEST_API_TOKEN: TOKEN }), /MCP_API_TOKEN/);
-    assert.throws(
-      () => loadConfig({ INGEST_API_TOKEN: TOKEN, MCP_API_TOKEN: TOKEN }),
-      /must differ/,
-    );
+  it("rejects a missing MCP token", () => {
+    assert.throws(() => loadConfig({}), /MCP_API_TOKEN/);
   });
 
   it("rejects an invalid port with a clear message", () => {
     assert.throws(
       () =>
         loadConfig({
-          INGEST_API_TOKEN: TOKEN,
-          MCP_API_TOKEN: MCP_TOKEN,
+              MCP_API_TOKEN: MCP_TOKEN,
           PORT: "not-a-port",
         }),
       /Invalid server configuration: PORT/,
@@ -117,8 +114,7 @@ describe("loadConfig", () => {
     assert.throws(
       () =>
         loadConfig({
-          INGEST_API_TOKEN: TOKEN,
-          MCP_API_TOKEN: MCP_TOKEN,
+              MCP_API_TOKEN: MCP_TOKEN,
           LOG_LEVEL: "verbose",
         }),
       /Invalid server configuration: LOG_LEVEL/,

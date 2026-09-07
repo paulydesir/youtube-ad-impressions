@@ -6,9 +6,9 @@ import { aggregateImpressions } from "../src/analytics.ts";
 import { sampleImpression } from "./sample-impression.ts";
 
 const { outputFiles } = await build({
-  entryPoints: [new URL("../popup/popup.tsx", import.meta.url).pathname],
-  bundle: true, write: false, format: "iife", platform: "browser",
-  define: { "process.env.NODE_ENV": '"production"' },
+  stdin: { contents: 'import {createRoot} from "react-dom/client"; import {App} from "./App.tsx"; createRoot(document.getElementById("root")).render(<App/>);', resolveDir: new URL("../popup/", import.meta.url).pathname, loader: "tsx" },
+  jsx: "automatic", bundle: true, write: false, format: "iife", platform: "browser",
+  define: { "process.env.NODE_ENV": '"production"', __SUPABASE_URL__: '"http://127.0.0.1:54321"', __SUPABASE_PUBLISHABLE_KEY__: '"test-key"' },
 });
 
 async function waitFor(check) {
@@ -22,6 +22,7 @@ async function waitFor(check) {
 function mount(t, respond, saveToken = async () => {}) {
   const dom = new JSDOM('<div id="root"></div>', { runScripts: "outside-only", url: "https://extension.test" });
   t.after(() => dom.window.close());
+  dom.window.fetch = async () => { throw new Error("Unexpected fetch"); };
   dom.window.chrome = { runtime: { sendMessage: respond }, storage: { local: { set: saveToken } } };
   dom.window.eval(outputFiles[0].text);
   return dom.window;
@@ -47,42 +48,9 @@ test("React popup reports worker connection errors", async t => {
   await waitFor(() => window.document.querySelector("#status")?.textContent.includes("Disconnected"));
 });
 
-test("missing token setup saves the worker's key and reconnects without reloading", async t => {
-  let token;
-  let reads = 0;
-  const window = mount(t, (message, callback) => {
-    assert.equal(message.type, "get-dashboard");
-    reads++;
-    callback(token ? dashboard([sampleImpression()]) : { ok: false, error: "Server API token is missing." });
-  }, async values => {
-    assert.deepEqual(Object.keys(values), ["localServerIngestToken"]);
-    token = values.localServerIngestToken;
-  });
-  const document = window.document;
-  await waitFor(() => document.querySelector("#status")?.textContent === "Server API token is missing.");
-  assert.equal(document.querySelector(".server-connection").open, true);
-  const input = document.querySelector("#server-token");
-  assert.equal(input.type, "password");
-  input.value = "  test-token  ";
-  document.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  await waitFor(() => document.querySelector("#total-impressions").textContent === "1");
-  assert.equal(token, "test-token");
-  assert.equal(reads, 2);
-  assert.equal(input.value, "");
-  assert.equal(document.querySelector(".server-connection").open, false);
-});
-
-test("token storage failures remain visible and do not retry the API", async t => {
-  let reads = 0;
-  const window = mount(t, (_message, callback) => {
-    reads++;
-    callback({ ok: false, error: "Server API token is missing." });
-  }, async () => { throw new Error("Storage unavailable"); });
-  const document = window.document;
-  await waitFor(() => document.querySelector(".server-connection")?.open);
-  document.querySelector("#server-token").value = "test-token";
-  document.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes("Storage unavailable"));
-  assert.equal(reads, 1);
-  assert.equal(document.querySelector('button[type="submit"]').disabled, false);
+test("dashboard offers refresh without a shared-token form", async t => {
+  const window = mount(t, (_message, callback) => callback(dashboard([])));
+  await waitFor(() => window.document.querySelector("#total-impressions")?.textContent === "0");
+  assert.equal(window.document.querySelector("#server-token"), null);
+  assert.equal(window.document.querySelector("button").textContent, "Refresh history");
 });

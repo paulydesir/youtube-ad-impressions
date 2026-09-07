@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { loadConfig } from "./config/env.js";
 import { openDatabase } from "./db/database.js";
+import { createTokenVerifier } from "./http/supabase-auth.js";
 import { createApp } from "./http/app.js";
 
 // Load apps/server/.env regardless of the working directory callers run
@@ -38,9 +39,10 @@ async function main(): Promise<void> {
 
   const verbose = config.LOG_LEVEL === "debug" || config.LOG_LEVEL === "info";
   const app = createApp({
+    verifyAccessToken: config.SUPABASE_PUBLISHABLE_KEY
+      ? createTokenVerifier(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY) : undefined,
     store: database.store,
     isDatabaseReady: () => database.isReady(),
-    ingestToken: config.INGEST_API_TOKEN,
     mcpToken: config.MCP_API_TOKEN,
     requestLog: verbose
       ? (message) => console.info(`[Ad Impressions Server] ${message}`)

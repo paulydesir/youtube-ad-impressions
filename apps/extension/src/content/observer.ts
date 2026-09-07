@@ -67,7 +67,8 @@ export function observeYouTubeAds(
   }
 
   function scheduleAdvertiserInspection(): void {
-    window.clearTimeout(domainTimer);
+    // Bound the wait: countdown/overlay mutations must not postpone detection forever.
+    if (domainTimer !== undefined) return;
     domainTimer = window.setTimeout(
       inspectAdvertiser,
       ADVERTISER_DEBOUNCE_MS,

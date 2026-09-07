@@ -120,7 +120,7 @@ test("a missing token disables forwarding without a request or warning", async (
 
   assert.equal(requests, 0);
   assert.deepEqual(messages, [
-    "[YouTube Ad Impressions] local forwarding disabled: set localServerIngestToken",
+    "[YouTube Ad Impressions] local forwarding disabled: sign in to your account",
   ]);
   assert.deepEqual(warnings, []);
 });
