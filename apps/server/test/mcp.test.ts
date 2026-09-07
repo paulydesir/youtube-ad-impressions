@@ -11,10 +11,12 @@ import { toAdImpressionV1 } from "@ad-impressions/contracts";
 import {
   closeDatabase,
   initializeDatabase,
+  isDatabaseReady,
   type DatabaseClient,
 } from "../src/db/client.js";
 import { createApp } from "../src/http/app.js";
 import { insertImpression } from "../src/repositories/impressions.js";
+import { createSqliteStore } from "../src/repositories/store.js";
 
 const INGEST_TOKEN = "ingest-test-token";
 const MCP_TOKEN = "mcp-test-token";
@@ -78,7 +80,12 @@ async function seedScenario() {
 }
 
 async function startMcpClient(): Promise<Client> {
-  const app = createApp({ db, ingestToken: INGEST_TOKEN, mcpToken: MCP_TOKEN });
+  const app = createApp({
+    store: createSqliteStore(db),
+    isDatabaseReady: () => Promise.resolve(isDatabaseReady(db)),
+    ingestToken: INGEST_TOKEN,
+    mcpToken: MCP_TOKEN,
+  });
   httpServer = createServer(app);
   await new Promise<void>((resolve) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());

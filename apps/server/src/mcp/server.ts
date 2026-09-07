@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { DatabaseClient } from "../db/client.js";
+import type { ImpressionStore } from "../repositories/store.js";
 import {
   getAdvertiserOverview,
   getAdvertiserStats,
@@ -31,7 +31,7 @@ const READ_ONLY_ANNOTATIONS = {
 // data. Handlers call the structured query services only: no web search, no
 // SQL, no writes. Limits are enforced by the Zod input schemas (max 100) and
 // again by the repository layer.
-export function createMcpServer(db: DatabaseClient): McpServer {
+export function createMcpServer(store: ImpressionStore, log: (message: string) => void = console.info): McpServer {
   const server = new McpServer(
     { name: "youtube-ad-impressions", version: "0.1.0" },
     { capabilities: { tools: {} } },
@@ -49,7 +49,7 @@ export function createMcpServer(db: DatabaseClient): McpServer {
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
     async (args) => {
-      const impressions = await searchImpressions(db, {
+      const impressions = await searchImpressions(store, {
         advertiser: args.advertiser,
         terms: args.terms,
         from: args.from === undefined ? undefined : new Date(args.from).toISOString(),
@@ -57,6 +57,7 @@ export function createMcpServer(db: DatabaseClient): McpServer {
         skipped: args.skipped,
         limit: args.limit,
       });
+      log(`[mcp] search_ad_impressions rows=${impressions.length}`);
       const output = { impressions };
       return {
         content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
@@ -77,13 +78,14 @@ export function createMcpServer(db: DatabaseClient): McpServer {
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
     async (args) => {
-      const stats = await getAdvertiserStats(db, {
+      const stats = await getAdvertiserStats(store, {
         advertiser: args.advertiser,
         from: args.from === undefined ? undefined : new Date(args.from).toISOString(),
         to: args.to === undefined ? undefined : new Date(args.to).toISOString(),
         limit: args.limit,
       });
       const output = { stats };
+      log(`[mcp] get_advertiser_stats rows=${stats.length}`);
       return {
         content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
         structuredContent: output,
@@ -103,7 +105,8 @@ export function createMcpServer(db: DatabaseClient): McpServer {
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
     async (args) => {
-      const overview = await getAdvertiserOverview(db, args.advertiser);
+      const overview = await getAdvertiserOverview(store, args.advertiser);
+      log(`[mcp] get_advertiser_overview status=${overview.status} query=${overview.query}`);
       const output = {
         status: overview.status,
         query: overview.query,

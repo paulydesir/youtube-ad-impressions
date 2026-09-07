@@ -1,12 +1,9 @@
-import type { DatabaseClient } from "../db/client.js";
-import {
-  getAdvertiserOverviewData,
-  getAdvertiserStats as repoAdvertiserStats,
-  searchImpressions as repoSearchImpressions,
-  type AdvertiserStatsFilters,
-  type CompactImpression,
-  type ImpressionFilters,
-} from "../repositories/impressions.js";
+import type {
+  AdvertiserStatsFilters,
+  CompactImpression,
+  ImpressionFilters,
+  ImpressionStore,
+} from "../repositories/store.js";
 
 // Compact observation DTO. The store holds no avatar or player-metadata
 // columns (those live only in raw_json), and raw_json never leaves the
@@ -52,29 +49,29 @@ function toStatsDto(row: {
 // Individual observations: headlines, promotions, timing, skip behavior.
 // Newest first; limits are clamped by the repository (default 20, max 100).
 export async function searchImpressions(
-  db: DatabaseClient,
+  store: ImpressionStore,
   filters: ImpressionFilters = {},
 ): Promise<ImpressionDto[]> {
-  return repoSearchImpressions(db, filters);
+  return store.searchImpressions(filters);
 }
 
 // Advertiser rankings and rates: frequency, total watch time, skip rate.
 export async function getAdvertiserStats(
-  db: DatabaseClient,
+  store: ImpressionStore,
   filters: AdvertiserStatsFilters = {},
 ): Promise<AdvertiserStatsDto[]> {
-  return (await repoAdvertiserStats(db, filters)).map(toStatsDto);
+  return (await store.getAdvertiserStats(filters)).map(toStatsDto);
 }
 
 // Resolves one observed advertiser key before returning any data. Exact keys
 // win, unique substring matches resolve automatically, and broad matches are
 // returned as candidates instead of being silently combined.
 export async function getAdvertiserOverview(
-  db: DatabaseClient,
+  store: ImpressionStore,
   advertiser: string,
 ): Promise<AdvertiserOverviewDto> {
   const query = advertiser.trim();
-  const exact = await getAdvertiserOverviewData(db, query);
+  const exact = await store.getAdvertiserOverviewData(query);
   if (exact.stats !== null) {
     return {
       status: "found",
@@ -88,7 +85,7 @@ export async function getAdvertiserOverview(
     };
   }
 
-  const candidates = (await repoAdvertiserStats(db, { advertiser: query, limit: 100 }))
+  const candidates = (await store.getAdvertiserStats({ advertiser: query, limit: 100 }))
     .map((candidate) => candidate.advertiser);
   if (candidates.length !== 1) {
     return {
@@ -103,7 +100,7 @@ export async function getAdvertiserOverview(
     };
   }
 
-  const overview = await getAdvertiserOverviewData(db, candidates[0]!);
+  const overview = await store.getAdvertiserOverviewData(candidates[0]!);
   return {
     status: "found",
     query,

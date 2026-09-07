@@ -15,6 +15,7 @@ import {
   getAdvertiserStats,
   searchImpressions,
 } from "../src/services/impressions.js";
+import { createSqliteStore, type ImpressionStore } from "../src/repositories/store.js";
 
 function impression(eventId: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -44,10 +45,12 @@ function impression(eventId: string, overrides: Record<string, unknown> = {}) {
 }
 
 let db: DatabaseClient;
+let sqliteStore: ImpressionStore;
 
 beforeEach(() => {
   const dir = mkdtempSync(join(tmpdir(), "ad-impressions-service-"));
   db = initializeDatabase(join(dir, "test.sqlite"));
+  sqliteStore = createSqliteStore(db);
 });
 
 afterEach(() => {
@@ -84,7 +87,7 @@ async function seedScenario() {
 describe("analysis services", () => {
   it("answers Coursera history: two observations with both headlines", async () => {
     await seedScenario();
-    const rows = await searchImpressions(db, { advertiser: "coursera" });
+    const rows = await searchImpressions(sqliteStore, { advertiser: "coursera" });
     assert.equal(rows.length, 2);
     assert.deepEqual(
       rows.map((row) => row.adHeadline).sort(),
@@ -95,7 +98,7 @@ describe("analysis services", () => {
 
   it("answers frequency questions with ranked advertiser stats", async () => {
     await seedScenario();
-    const stats = await getAdvertiserStats(db);
+    const stats = await getAdvertiserStats(sqliteStore);
     assert.equal(stats[0]?.advertiser, "coursera.org");
     assert.equal(stats[0]?.impressionCount, 2);
     assert.equal(stats[0]?.skipRate, 0);
@@ -105,7 +108,7 @@ describe("analysis services", () => {
 
   it("answers single-advertiser questions with an overview", async () => {
     await seedScenario();
-    const overview = await getAdvertiserOverview(db, "Coursera");
+    const overview = await getAdvertiserOverview(sqliteStore, "Coursera");
     assert.equal(overview.status, "found");
     assert.equal(overview.advertiser, "coursera.org");
     assert.equal(overview.stats?.impressionCount, 2);
@@ -116,7 +119,7 @@ describe("analysis services", () => {
 
   it("returns empty overview data for an unknown advertiser", async () => {
     await seedScenario();
-    const overview = await getAdvertiserOverview(db, "nobody");
+    const overview = await getAdvertiserOverview(sqliteStore, "nobody");
     assert.equal(overview.status, "not_found");
     assert.deepEqual(overview.candidates, []);
     assert.equal(overview.stats, null);
@@ -139,13 +142,13 @@ describe("analysis services", () => {
       }),
     );
 
-    const ambiguous = await getAdvertiserOverview(db, "google");
+    const ambiguous = await getAdvertiserOverview(sqliteStore, "google");
     assert.equal(ambiguous.status, "ambiguous");
     assert.deepEqual(ambiguous.candidates.sort(), ["cloud.google.com", "google.com"]);
     assert.equal(ambiguous.stats, null);
     assert.deepEqual(ambiguous.recent, []);
 
-    const exact = await getAdvertiserOverview(db, "google.com");
+    const exact = await getAdvertiserOverview(sqliteStore, "google.com");
     assert.equal(exact.status, "found");
     assert.equal(exact.advertiser, "google.com");
     assert.equal(exact.stats?.impressionCount, 1);
@@ -154,7 +157,7 @@ describe("analysis services", () => {
 
   it("enforces result limits", async () => {
     await seedScenario();
-    assert.equal((await searchImpressions(db, { limit: 1 })).length, 1);
-    assert.equal((await getAdvertiserStats(db, { limit: 1 })).length, 1);
+    assert.equal((await searchImpressions(sqliteStore, { limit: 1 })).length, 1);
+    assert.equal((await getAdvertiserStats(sqliteStore, { limit: 1 })).length, 1);
   });
 });

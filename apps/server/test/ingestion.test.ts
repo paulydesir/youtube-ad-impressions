@@ -8,9 +8,11 @@ import type { Express } from "express";
 import {
   closeDatabase,
   initializeDatabase,
+  isDatabaseReady,
   type DatabaseClient,
 } from "../src/db/client.js";
 import { createApp } from "../src/http/app.js";
+import { createSqliteStore } from "../src/repositories/store.js";
 
 const TOKEN = "ingest-test-token";
 const MCP_TOKEN = "mcp-test-token";
@@ -47,7 +49,12 @@ let app: Express;
 beforeEach(() => {
   const dir = mkdtempSync(join(tmpdir(), "ad-impressions-ingest-"));
   db = initializeDatabase(join(dir, "test.sqlite"));
-  app = createApp({ db, ingestToken: TOKEN, mcpToken: MCP_TOKEN });
+  app = createApp({
+    store: createSqliteStore(db),
+    isDatabaseReady: () => Promise.resolve(isDatabaseReady(db)),
+    ingestToken: TOKEN,
+    mcpToken: MCP_TOKEN,
+  });
 });
 
 afterEach(() => {
@@ -102,6 +109,21 @@ describe("POST /api/v1/impressions", () => {
       .send("{oops");
     assert.equal(response.status, 400);
     assert.equal(response.body.error, "invalid_json");
+  });
+});
+
+describe("GET /api/v1/impressions", () => {
+  it("returns stored records newest first", async () => {
+    await auth(request(app).post("/api/v1/impressions")).send(impression("evt-read"));
+    const response = await auth(request(app).get("/api/v1/impressions"));
+    assert.equal(response.status, 200);
+    assert.equal(response.body.records.length, 1);
+    assert.equal(response.body.records[0].eventId, "evt-read");
+  });
+
+  it("requires authorization", async () => {
+    const response = await request(app).get("/api/v1/impressions");
+    assert.equal(response.status, 401);
   });
 });
 

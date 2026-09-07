@@ -3,6 +3,7 @@
   "compilerOptions": {
     // TypeScript 7 (native Go port) — same language semantics, ~10x faster checks.
     "target": "ES2022",
+    "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",

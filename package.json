@@ -15,5 +15,8 @@
     "test:extension": "npm run test --workspace @ad-impressions/extension",
     "build:extension": "npm run build --workspace @ad-impressions/extension",
     "typecheck:extension": "npm run typecheck --workspace @ad-impressions/extension"
+  },
+  "devDependencies": {
+    "supabase": "^2.116.0"
   }
 }
