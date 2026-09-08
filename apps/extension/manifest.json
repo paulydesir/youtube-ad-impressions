@@ -4,6 +4,7 @@
   "version": "0.2.0",
   "description": "Privately tracks and summarizes YouTube video-ad impressions.",
   "permissions": [
+    "identity",
     "storage",
     "scripting"
   ],

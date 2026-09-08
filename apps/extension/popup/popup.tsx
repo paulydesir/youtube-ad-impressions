@@ -1,14 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
-
-import { AuthProvider, useAuth } from "../src/auth/AuthProvider.tsx";
-import { AuthPanel } from "./AuthPanel.tsx";
-
-function Dashboard() {
-  const { user, isLoading } = useAuth();
-  return !isLoading && user ? <App key={user.id} /> : <p>Sign in to load and save impressions.</p>;
-}
+import { AuthProvider } from "../src/auth/AuthProvider.tsx";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing popup root.");
-createRoot(root).render(<AuthProvider><AuthPanel /><Dashboard /></AuthProvider>);
+createRoot(root).render(<AuthProvider><App /></AuthProvider>);

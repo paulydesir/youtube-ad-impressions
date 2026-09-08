@@ -1,11 +1,13 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import { createGoogleOAuthSignIn } from "./google-oauth.ts";
 import { supabase } from "./supabase.ts";
 
 function useAuthState(client: SupabaseClient) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const signInWithGoogle = useMemo(() => createGoogleOAuthSignIn(client), [client]);
   useEffect(() => {
     let active = true;
     let changed = false;
@@ -22,7 +24,7 @@ function useAuthState(client: SupabaseClient) {
     return () => { active = false; subscription.unsubscribe(); };
   }, [client]);
   return {
-    user: session?.user ?? null, session, isLoading, error,
+    user: session?.user ?? null, session, isLoading, error, signInWithGoogle,
     async signUp(email: string, password: string, name?: string) {
       const { data, error } = await client.auth.signUp({ email, password, options: { data: { name: name || null } } });
       if (error) throw error;

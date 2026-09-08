@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { AdvertiserSummary } from "../src/analytics.ts";
 import type { AdImpressionRecord } from "../src/types.ts";
+import { useAuth } from "../src/auth/AuthProvider.tsx";
+import { AuthPanel } from "./AuthPanel.tsx";
 import { formatDuration, sendMessage } from "./dashboard-api.ts";
 import type { DashboardResponse } from "./dashboard-api.ts";
 
@@ -38,7 +40,7 @@ function RecentImpressions({ records }: { records: AdImpressionRecord[] }) {
   </div>;
 }
 
-export function App() {
+function Dashboard() {
   const [dashboard, setDashboard] = useState<DashboardResponse>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,4 +94,45 @@ export function App() {
     </section>
     <footer className="footnote">Stored in PostgreSQL</footer>
   </main>;
+}
+
+export function App() {
+  const auth = useAuth();
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  async function continueWithGoogle() {
+    setOauthBusy(true);
+    setOauthError(null);
+    try {
+      await auth.signInWithGoogle();
+    } catch (error) {
+      setOauthError(errorMessage(error));
+    } finally {
+      setOauthBusy(false);
+    }
+  }
+
+  if (auth.isLoading) {
+    return <main className="auth-page"><p role="status">Checking session…</p></main>;
+  }
+
+  if (!auth.user) {
+    return <main className="auth-page">
+      <header className="auth-hero">
+        <h1>YouTube Ad Impressions</h1>
+        <p>Track the ads YouTube shows you<br />and explore your advertising profile.</p>
+      </header>
+      <button className="google-sign-in" disabled={oauthBusy} onClick={() => void continueWithGoogle()}>
+        {oauthBusy ? "Signing in…" : "Continue with Google"}
+      </button>
+      {oauthError && <p role="alert">{oauthError}</p>}
+      <AuthPanel />
+    </main>;
+  }
+
+  return <>
+    <AuthPanel />
+    <Dashboard key={auth.user.id} />
+  </>;
 }

@@ -33,7 +33,7 @@ export function AuthPanel() {
   return <section className="auth-panel" aria-label="Account">
     <h2>Account</h2>
     {auth.isLoading ? <p role="status">Loading session…</p> : auth.user ? <>
-      <p>Signed in as {auth.user.email}</p>
+      <p>Signed in as<br /><strong>{auth.user.email}</strong></p>
       <button disabled={busy} onClick={() => void run(async () => { await auth.signOut(); return "Signed out."; })}>Log out</button>
     </> : <>
       <form onSubmit={submit}>
@@ -47,9 +47,9 @@ export function AuthPanel() {
       </form>
       <button disabled={busy} onClick={() => { setSignup(!signup); setMessage(""); setError(""); }}>{signup ? "Already have an account? Log in" : "Create an account"}</button>
     </>}
-    <button disabled={busy || auth.isLoading} onClick={() => void run(async () => {
+    {auth.user && <button disabled={busy || auth.isLoading} onClick={() => void run(async () => {
       const me = await api.getMe(); return `Verified by server: ${me.email} (${me.id})`;
-    })}>Check /me</button>
+    })}>Check /me</button>}
     {message && <p role="status">{message}</p>}
     {(error || auth.error) && <p role="alert">{error || auth.error}</p>}
   </section>;

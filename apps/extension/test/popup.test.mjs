@@ -6,7 +6,21 @@ import { aggregateImpressions } from "../src/analytics.ts";
 import { sampleImpression } from "./sample-impression.ts";
 
 const { outputFiles } = await build({
-  stdin: { contents: 'import {createRoot} from "react-dom/client"; import {App} from "./App.tsx"; createRoot(document.getElementById("root")).render(<App/>);', resolveDir: new URL("../popup/", import.meta.url).pathname, loader: "tsx" },
+  stdin: { contents: `
+    import {createRoot} from "react-dom/client";
+    import {App} from "./App.tsx";
+    import {AuthProvider} from "../src/auth/AuthProvider.tsx";
+    const session = {user: {id: "test-user", email: "test@example.com"}};
+    const client = {auth: {
+      onAuthStateChange(callback) {
+        queueMicrotask(() => callback("INITIAL_SESSION", session));
+        return {data: {subscription: {unsubscribe() {}}}};
+      },
+      getSession: async () => ({data: {session}, error: null}),
+      signOut: async () => ({error: null}),
+    }};
+    createRoot(document.getElementById("root")).render(<AuthProvider client={client}><App/></AuthProvider>);
+  `, resolveDir: new URL("../popup/", import.meta.url).pathname, loader: "tsx" },
   jsx: "automatic", bundle: true, write: false, format: "iife", platform: "browser",
   define: { "process.env.NODE_ENV": '"production"', __SUPABASE_URL__: '"http://127.0.0.1:54321"', __SUPABASE_PUBLISHABLE_KEY__: '"test-key"' },
 });
@@ -23,7 +37,10 @@ function mount(t, respond, saveToken = async () => {}) {
   const dom = new JSDOM('<div id="root"></div>', { runScripts: "outside-only", url: "https://extension.test" });
   t.after(() => dom.window.close());
   dom.window.fetch = async () => { throw new Error("Unexpected fetch"); };
-  dom.window.chrome = { runtime: { sendMessage: respond }, storage: { local: { set: saveToken } } };
+  dom.window.chrome = {
+    runtime: { sendMessage: respond },
+    storage: { local: { get: async () => ({}), set: saveToken, remove: async () => {} } },
+  };
   dom.window.eval(outputFiles[0].text);
   return dom.window;
 }
@@ -52,5 +69,5 @@ test("dashboard offers refresh without a shared-token form", async t => {
   const window = mount(t, (_message, callback) => callback(dashboard([])));
   await waitFor(() => window.document.querySelector("#total-impressions")?.textContent === "0");
   assert.equal(window.document.querySelector("#server-token"), null);
-  assert.equal(window.document.querySelector("button").textContent, "Refresh history");
+  assert.equal(window.document.querySelector("main > button").textContent, "Refresh history");
 });

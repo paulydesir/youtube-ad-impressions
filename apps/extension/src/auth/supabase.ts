@@ -5,7 +5,7 @@ declare const __SUPABASE_PUBLISHABLE_KEY__: string;
 
 export const supabase = createClient(__SUPABASE_URL__, __SUPABASE_PUBLISHABLE_KEY__, {
   auth: {
-    persistSession: true, autoRefreshToken: true, detectSessionInUrl: false,
+    persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: "pkce",
     storage: createChromeAuthStorage(chrome.storage.local),
   },
 });

@@ -316,3 +316,21 @@ h2 {
 .auth-panel label { display: grid; gap: 4px; margin: 10px 0; }
 .auth-panel button { margin: 6px 6px 6px 0; }
 .auth-panel p { overflow-wrap: anywhere; }
+
+.auth-page { min-height: 520px; }
+.auth-hero { margin-bottom: 20px; }
+.auth-hero p { color: var(--muted); line-height: 1.5; }
+.google-sign-in {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--text);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.google-sign-in:disabled { opacity: .6; cursor: default; }
+.google-sign-in:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.auth-page .auth-panel { margin: 24px -20px -16px; border-top: 1px solid var(--border); border-bottom: 0; }
