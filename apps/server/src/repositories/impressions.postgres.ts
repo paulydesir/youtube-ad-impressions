@@ -1,3 +1,4 @@
+import { requireUserId } from "./tenant.js";
 import type { AdImpressionV1 } from "@ad-impressions/contracts";
 import { and, count, desc, eq, gte, lte, max, min, or, sql, sum } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
@@ -26,7 +27,7 @@ export interface AdvertiserStatsFilters {
 // database. eventId is the portable identity.
 export type CompactImpression = Omit<
   typeof adImpressions.$inferSelect,
-  "id" | "rawJson"
+  "id" | "rawJson" | "userId" | "userId"
 >;
 
 export interface AdvertiserStatRow {
@@ -150,6 +151,7 @@ function toAdvertiserStatRow(row: {
 // throwing when the event was already stored.
 export async function insertImpression(
   db: PostgresDatabaseClient,
+  userId: string,
   record: AdImpressionV1,
   rawJson: string,
   ingestedAt: string = new Date().toISOString(),
@@ -157,6 +159,7 @@ export async function insertImpression(
   const rows = await db
     .insert(adImpressions)
     .values({
+      userId: requireUserId(userId),
       eventId: record.event_id,
       schemaVersion: record.schema_version,
       source: record.source,
@@ -181,7 +184,7 @@ export async function insertImpression(
       rawJson,
       ingestedAt,
     })
-    .onConflictDoNothing({ target: adImpressions.eventId })
+    .onConflictDoNothing({ target: [adImpressions.userId, adImpressions.eventId] })
     .returning({ eventId: adImpressions.eventId });
   return {
     status: rows.length > 0 ? "inserted" : "duplicate",
@@ -191,9 +194,11 @@ export async function insertImpression(
 
 export async function searchImpressions(
   db: PostgresDatabaseClient,
+  userId: string,
   filters: ImpressionFilters = {},
 ): Promise<CompactImpression[]> {
   const conditions = [
+    eq(adImpressions.userId, requireUserId(userId)),
     ...dateConditions(filters.from, filters.to),
     ...(filters.skipped === undefined ? [] : [eq(adImpressions.skipped, filters.skipped)]),
   ];
@@ -212,9 +217,10 @@ export async function searchImpressions(
 
 export async function getAdvertiserStats(
   db: PostgresDatabaseClient,
+  userId: string,
   filters: AdvertiserStatsFilters = {},
 ): Promise<AdvertiserStatRow[]> {
-  const conditions = dateConditions(filters.from, filters.to);
+  const conditions = [eq(adImpressions.userId, requireUserId(userId)), ...dateConditions(filters.from, filters.to)];
   const advertiser = filters.advertiser === undefined ? undefined : advertiserConditions(filters.advertiser);
   if (advertiser) conditions.push(advertiser);
 
@@ -238,6 +244,7 @@ export async function getAdvertiserStats(
 
 async function distinctColumnValues(
   db: PostgresDatabaseClient,
+  userId: string,
   column: typeof adImpressions.adHeadline | typeof adImpressions.creativeTitle,
   resolvedAdvertiser: string,
 ): Promise<string[]> {
@@ -246,6 +253,7 @@ async function distinctColumnValues(
     .from(adImpressions)
     .where(
       and(
+        eq(adImpressions.userId, requireUserId(userId)),
         sql`${column} is not null`,
         exactAdvertiserKeyCondition(resolvedAdvertiser),
       ),
@@ -256,11 +264,12 @@ async function distinctColumnValues(
 
 export async function getAdvertiserOverviewData(
   db: PostgresDatabaseClient,
+  userId: string,
   resolvedAdvertiser: string,
 ): Promise<AdvertiserOverviewData> {
   // This operation intentionally uses one exact observed aggregation key. The
   // service layer resolves user-facing substring queries before calling it.
-  const condition = exactAdvertiserKeyCondition(resolvedAdvertiser);
+  const condition = and(eq(adImpressions.userId, requireUserId(userId)), exactAdvertiserKeyCondition(resolvedAdvertiser));
   const [statsRow] = await db
     .select({
       advertiser: advertiserKey,
@@ -281,8 +290,8 @@ export async function getAdvertiserOverviewData(
     .orderBy(desc(adImpressions.startedAt), desc(adImpressions.id))
     .limit(OVERVIEW_RECENT_LIMIT);
   const [headlines, creativeTitles] = await Promise.all([
-    distinctColumnValues(db, adImpressions.adHeadline, resolvedAdvertiser),
-    distinctColumnValues(db, adImpressions.creativeTitle, resolvedAdvertiser),
+    distinctColumnValues(db, userId, adImpressions.adHeadline, resolvedAdvertiser),
+    distinctColumnValues(db, userId, adImpressions.creativeTitle, resolvedAdvertiser),
   ]);
   return {
     stats: statsRow === undefined ? null : toAdvertiserStatRow(statsRow),

@@ -1,3 +1,4 @@
+const TEST_USER = "9c3f24dd-50ab-4f8c-a389-a860dd3053ae";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -54,21 +55,21 @@ afterEach(() => {
 
 async function store(input: Record<string, unknown>) {
   const { record, rawJson } = toAdImpressionV1(input);
-  return insertImpression(db, record, rawJson);
+  return insertImpression(db, TEST_USER, record, rawJson);
 }
 
 describe("insertImpression", () => {
   it("migrates a fresh database and stores a record", async () => {
     const result = await store(impression({ event_id: "evt-1" }));
     assert.equal(result.status, "inserted");
-    assert.equal((await searchImpressions(db)).length, 1);
+    assert.equal((await searchImpressions(db, TEST_USER)).length, 1);
   });
 
   it("is idempotent by event_id", async () => {
     const input = impression({ event_id: "evt-dedupe" });
     assert.equal((await store(input)).status, "inserted");
     assert.equal((await store(input)).status, "duplicate");
-    assert.equal((await searchImpressions(db)).length, 1);
+    assert.equal((await searchImpressions(db, TEST_USER)).length, 1);
   });
 });
 
@@ -78,7 +79,7 @@ describe("searchImpressions", () => {
     await store(
       impression({ event_id: "e2", started_at: "2026-09-02T12:00:00.000Z" }),
     );
-    const rows = await searchImpressions(db, { advertiser: "COURSERA" });
+    const rows = await searchImpressions(db, TEST_USER, { advertiser: "COURSERA" });
     assert.equal(rows.length, 2);
     assert.equal(rows[0]?.eventId, "e2");
     assert.ok(!("rawJson" in rows[0]!));
@@ -103,7 +104,7 @@ describe("searchImpressions", () => {
         advertiser_domain: "example.com",
       }),
     );
-    const rows = await searchImpressions(db, { terms: ["Save", "Career"] });
+    const rows = await searchImpressions(db, TEST_USER, { terms: ["Save", "Career"] });
     assert.deepEqual(
       rows.map((row) => row.eventId).sort(),
       ["e1", "e2"],
@@ -118,18 +119,18 @@ describe("searchImpressions", () => {
       impression({ event_id: "e2", started_at: "2026-09-01T12:00:00.000Z", skipped: false }),
     );
     assert.equal(
-      (await searchImpressions(db, { from: "2026-08-15T00:00:00.000Z" })).length,
+      (await searchImpressions(db, TEST_USER, { from: "2026-08-15T00:00:00.000Z" })).length,
       1,
     );
-    assert.equal((await searchImpressions(db, { skipped: true }))[0]?.eventId, "e1");
+    assert.equal((await searchImpressions(db, TEST_USER, { skipped: true }))[0]?.eventId, "e1");
   });
 
   it("clamps limits to a maximum of 100", async () => {
     for (let n = 0; n < 5; n += 1) {
       await store(impression({ event_id: `bulk-${n}` }));
     }
-    assert.equal((await searchImpressions(db, { limit: 2 })).length, 2);
-    assert.equal((await searchImpressions(db, { limit: 5000 })).length, 5);
+    assert.equal((await searchImpressions(db, TEST_USER, { limit: 2 })).length, 2);
+    assert.equal((await searchImpressions(db, TEST_USER, { limit: 5000 })).length, 5);
   });
 });
 
@@ -161,7 +162,7 @@ describe("getAdvertiserStats", () => {
         skipped: false,
       }),
     );
-    const stats = await getAdvertiserStats(db);
+    const stats = await getAdvertiserStats(db, TEST_USER);
     assert.equal(stats.length, 2);
     assert.equal(stats[0]?.advertiser, "coursera.org");
     assert.equal(stats[0]?.impressionCount, 2);
@@ -176,7 +177,7 @@ describe("getAdvertiserOverviewData", () => {
   it("returns stats, recent impressions, and distinct texts", async () => {
     await store(impression({ event_id: "e1", ad_headline: "Save $70+" }));
     await store(impression({ event_id: "e2", ad_headline: "Invest in Your Growth" }));
-    const overview = await getAdvertiserOverviewData(db, "coursera.org");
+    const overview = await getAdvertiserOverviewData(db, TEST_USER, "coursera.org");
     assert.equal(overview.stats?.impressionCount, 2);
     assert.equal(overview.recent.length, 2);
     assert.deepEqual(overview.headlines, ["Invest in Your Growth", "Save $70+"]);
@@ -184,7 +185,7 @@ describe("getAdvertiserOverviewData", () => {
   });
 
   it("returns empty data for an unknown advertiser", async () => {
-    const overview = await getAdvertiserOverviewData(db, "nobody");
+    const overview = await getAdvertiserOverviewData(db, TEST_USER, "nobody");
     assert.equal(overview.stats, null);
     assert.deepEqual(overview.recent, []);
     assert.deepEqual(overview.headlines, []);

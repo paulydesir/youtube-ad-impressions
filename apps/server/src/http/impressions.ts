@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { toAdImpressionV1 } from "@ad-impressions/contracts";
 import { ZodError } from "zod";
 import type { ImpressionStore } from "../repositories/store.js";
-import { requireSupabaseAuth, type VerifyAccessToken } from "./supabase-auth.js";
+import { requireSupabaseAuth, type AuthenticatedRequest, type VerifyAccessToken } from "./supabase-auth.js";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -29,7 +29,7 @@ export function createImpressionsRouter(
   router.get("/", async (req: Request, res: Response) => {
     const requested = Number(req.query.limit ?? 100);
     const limit = Number.isFinite(requested) ? requested : 100;
-    const records = await store.searchImpressions({ limit });
+    const records = await store.searchImpressions((req as AuthenticatedRequest).auth!.userId, { limit });
     res.json({ records });
   });
 
@@ -47,7 +47,7 @@ export function createImpressionsRouter(
       });
       return;
     }
-    const { status, eventId } = await store.insertImpression(record, rawJson);
+    const { status, eventId } = await store.insertImpression((req as AuthenticatedRequest).auth!.userId, record, rawJson);
     // DB write confirmation: status + portable identity only, never the body.
     log(`[ingest] ${status} event_id=${eventId}`);
     if (status === "duplicate") {
@@ -77,7 +77,7 @@ export function createImpressionsRouter(
     for (let index = 0; index < req.body.length; index += 1) {
       try {
         const { record, rawJson } = toAdImpressionV1(req.body[index]);
-        const { status } = await store.insertImpression(record, rawJson);
+        const { status } = await store.insertImpression((req as AuthenticatedRequest).auth!.userId, record, rawJson);
         if (status === "duplicate") duplicates += 1;
         else accepted += 1;
       } catch (error) {

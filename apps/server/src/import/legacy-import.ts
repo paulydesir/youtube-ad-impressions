@@ -106,6 +106,7 @@ function normalizeLegacyRow(row: Record<string, unknown>): AdImpressionV1 {
 // report duplicates instead of inserting new rows.
 export async function importLegacyExport(
   store: ImpressionStore,
+  userId: string,
   data: unknown,
 ): Promise<LegacyImportSummary> {
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
@@ -128,7 +129,7 @@ export async function importLegacyExport(
         throw new Error("Impression entry must be an object.");
       }
       const record = normalizeLegacyRow(item as Record<string, unknown>);
-      const { status } = await store.insertImpression(record, JSON.stringify(item));
+      const { status } = await store.insertImpression(userId, record, JSON.stringify(item));
       if (status === "duplicate") duplicates += 1;
       else accepted += 1;
     } catch {

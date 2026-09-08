@@ -1,3 +1,4 @@
+const TEST_USER = "9c3f24dd-50ab-4f8c-a389-a860dd3053ae";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "vitest";
 import { toAdImpressionV1 } from "@ad-impressions/contracts";
@@ -55,7 +56,7 @@ describePostgres("postgres store (DATABASE_URL)", () => {
 
   async function put(input: Record<string, unknown>) {
     const { record, rawJson } = toAdImpressionV1(input);
-    return store.insertImpression(record, rawJson);
+    return store.insertImpression(TEST_USER, record, rawJson);
   }
 
   it("opens the postgres backend and reports ready", async () => {
@@ -84,7 +85,7 @@ describePostgres("postgres store (DATABASE_URL)", () => {
         ad_headline: prefix,
       }),
     );
-    const rows = await store.searchImpressions({ advertiser: "COURSERA", terms: [prefix] });
+    const rows = await store.searchImpressions(TEST_USER, { advertiser: "COURSERA", terms: [prefix] });
     assert.deepEqual(
       rows.map((row) => row.eventId),
       [`${prefix}-2`, `${prefix}-1`],
@@ -112,7 +113,7 @@ describePostgres("postgres store (DATABASE_URL)", () => {
         skipped: false,
       }),
     );
-    const stats = await store.getAdvertiserStats({ advertiser: `${prefix}.com` });
+    const stats = await store.getAdvertiserStats(TEST_USER, { advertiser: `${prefix}.com` });
     assert.equal(stats.length, 1);
     assert.equal(stats[0]?.impressionCount, 2);
     assert.equal(stats[0]?.totalDurationMs, 30000);

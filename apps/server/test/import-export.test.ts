@@ -1,3 +1,4 @@
+const TEST_USER = "9c3f24dd-50ab-4f8c-a389-a860dd3053ae";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -66,39 +67,39 @@ afterEach(() => {
 describe("importLegacyExport", () => {
   it("imports rows and ignores the stats record", async () => {
     const summary = await importLegacyExport(
-      sqliteStore,
+      sqliteStore, TEST_USER,
       envelope([legacyRow(), { ...legacyRow(), timestamp: "2026-09-02T12:00:00.000Z" }]),
     );
     assert.deepEqual(summary, { accepted: 2, duplicates: 0, rejected: 0 });
-    assert.equal((await searchImpressions(db)).length, 2);
+    assert.equal((await searchImpressions(db, TEST_USER)).length, 2);
   });
 
   it("is repeat-safe with deterministic event IDs", async () => {
     const data = envelope([{ ...legacyRow(), id: 1 }, { ...legacyRow(), id: 999 }]);
-    const first = await importLegacyExport(sqliteStore, data);
+    const first = await importLegacyExport(sqliteStore, TEST_USER, data);
     // Same content under a different IndexedDB id is the same observation.
     assert.deepEqual(first, { accepted: 1, duplicates: 1, rejected: 0 });
-    const second = await importLegacyExport(sqliteStore, data);
+    const second = await importLegacyExport(sqliteStore, TEST_USER, data);
     assert.deepEqual(second, { accepted: 0, duplicates: 2, rejected: 0 });
-    assert.equal((await searchImpressions(db)).length, 1);
+    assert.equal((await searchImpressions(db, TEST_USER)).length, 1);
   });
 
   it("preserves extension-owned event and pod UUIDs", async () => {
     const eventId = "11111111-1111-4111-8111-111111111111";
     const podId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     await importLegacyExport(
-      sqliteStore,
+      sqliteStore, TEST_USER,
       envelope([legacyRow({ event_id: eventId, pod_id: podId })]),
     );
 
-    const [row] = await searchImpressions(db);
+    const [row] = await searchImpressions(db, TEST_USER);
     assert.equal(row?.eventId, eventId);
     assert.equal(row?.podId, podId);
   });
 
   it("maps legacy pod and advertiser fields onto V1", async () => {
-    await importLegacyExport(sqliteStore, envelope([legacyRow()]));
-    const [row] = await searchImpressions(db, { advertiser: "coursera" });
+    await importLegacyExport(sqliteStore, TEST_USER, envelope([legacyRow()]));
+    const [row] = await searchImpressions(db, TEST_USER, { advertiser: "coursera" });
     assert.equal(row?.advertiserDomain, "coursera.org");
     assert.equal(row?.podLabel, "1 of 2");
     assert.equal(row?.podPosition, 1);
@@ -109,7 +110,7 @@ describe("importLegacyExport", () => {
 
   it("does not infer shared pods from host video and ad position", async () => {
     await importLegacyExport(
-      sqliteStore,
+      sqliteStore, TEST_USER,
       envelope([
         legacyRow({
           timestamp: "2026-09-01T12:00:00.000Z",
@@ -126,7 +127,7 @@ describe("importLegacyExport", () => {
       ]),
     );
 
-    const rows = await searchImpressions(db);
+    const rows = await searchImpressions(db, TEST_USER);
     assert.equal(rows.length, 3);
     assert.equal(new Set(rows.map((row) => row.podId)).size, 3);
     assert.ok(rows.every((row) => row.podId === `legacy-pod:${row.eventId}`));
@@ -134,15 +135,15 @@ describe("importLegacyExport", () => {
 
   it("counts invalid rows as rejected without aborting", async () => {
     const summary = await importLegacyExport(
-      sqliteStore,
+      sqliteStore, TEST_USER,
       envelope([legacyRow(), { advertiser_name: 42 }, "not-an-object"]),
     );
     assert.deepEqual(summary, { accepted: 1, duplicates: 0, rejected: 2 });
   });
 
   it("rejects unsupported envelopes", async () => {
-    await assert.rejects(importLegacyExport(sqliteStore, envelope([]).impressions), /JSON object/);
-    await assert.rejects(importLegacyExport(sqliteStore, { formatVersion: 2, impressions: [] }), /formatVersion/);
-    await assert.rejects(importLegacyExport(sqliteStore, { formatVersion: 1 }), /impressions/);
+    await assert.rejects(importLegacyExport(sqliteStore, TEST_USER, envelope([]).impressions), /JSON object/);
+    await assert.rejects(importLegacyExport(sqliteStore, TEST_USER, { formatVersion: 2, impressions: [] }), /formatVersion/);
+    await assert.rejects(importLegacyExport(sqliteStore, TEST_USER, { formatVersion: 1 }), /impressions/);
   });
 });

@@ -36,33 +36,34 @@ export type {
 // backends (timestamps stay UTC ISO-8601 strings; skipped stays boolean).
 export interface ImpressionStore {
   insertImpression(
+    userId: string,
     record: AdImpressionV1,
     rawJson: string,
     ingestedAt?: string,
   ): Promise<{ status: InsertStatus; eventId: string }>;
-  searchImpressions(filters?: ImpressionFilters): Promise<CompactImpression[]>;
-  getAdvertiserStats(filters?: AdvertiserStatsFilters): Promise<AdvertiserStatRow[]>;
-  getAdvertiserOverviewData(resolvedAdvertiser: string): Promise<AdvertiserOverviewData>;
+  searchImpressions(userId: string, filters?: ImpressionFilters): Promise<CompactImpression[]>;
+  getAdvertiserStats(userId: string, filters?: AdvertiserStatsFilters): Promise<AdvertiserStatRow[]>;
+  getAdvertiserOverviewData(userId: string, resolvedAdvertiser: string): Promise<AdvertiserOverviewData>;
 }
 
 export function createSqliteStore(db: DatabaseClient): ImpressionStore {
   return {
-    insertImpression: (record, rawJson, ingestedAt) =>
-      sqliteInsert(db, record, rawJson, ingestedAt),
-    searchImpressions: (filters) => sqliteSearch(db, filters),
-    getAdvertiserStats: (filters) => sqliteStats(db, filters),
-    getAdvertiserOverviewData: (resolvedAdvertiser) =>
-      sqliteOverview(db, resolvedAdvertiser),
+    insertImpression: (userId, record, rawJson, ingestedAt) =>
+      sqliteInsert(db, userId, record, rawJson, ingestedAt),
+    searchImpressions: (userId, filters) => sqliteSearch(db, userId, filters),
+    getAdvertiserStats: (userId, filters) => sqliteStats(db, userId, filters),
+    getAdvertiserOverviewData: (userId, resolvedAdvertiser) =>
+      sqliteOverview(db, userId, resolvedAdvertiser),
   };
 }
 
 export function createPostgresStore(db: PostgresDatabaseClient): ImpressionStore {
   return {
-    insertImpression: (record, rawJson, ingestedAt) =>
-      postgresInsert(db, record, rawJson, ingestedAt),
-    searchImpressions: (filters) => postgresSearch(db, filters),
-    getAdvertiserStats: (filters) => postgresStats(db, filters),
-    getAdvertiserOverviewData: (resolvedAdvertiser) =>
-      postgresOverview(db, resolvedAdvertiser),
+    insertImpression: (userId, record, rawJson, ingestedAt) =>
+      postgresInsert(db, userId, record, rawJson, ingestedAt),
+    searchImpressions: (userId, filters) => postgresSearch(db, userId, filters),
+    getAdvertiserStats: (userId, filters) => postgresStats(db, userId, filters),
+    getAdvertiserOverviewData: (userId, resolvedAdvertiser) =>
+      postgresOverview(db, userId, resolvedAdvertiser),
   };
 }

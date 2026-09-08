@@ -1,11 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ImpressionStore } from "../repositories/store.js";
 import {
-  getAdvertiserOverview,
-  getAdvertiserStats,
-  searchImpressions,
-} from "../services/impressions.js";
-import {
   getAdvertiserOverviewInputShape,
   getAdvertiserOverviewOutputSchema,
   getAdvertiserStatsInputSchema,
@@ -31,7 +26,7 @@ const READ_ONLY_ANNOTATIONS = {
 // data. Handlers call the structured query services only: no web search, no
 // SQL, no writes. Limits are enforced by the Zod input schemas (max 100) and
 // again by the repository layer.
-export function createMcpServer(store: ImpressionStore, log: (message: string) => void = console.info): McpServer {
+export function createMcpServer(_store: ImpressionStore, _log: (message: string) => void = console.info): McpServer {
   const server = new McpServer(
     { name: "youtube-ad-impressions", version: "0.1.0" },
     { capabilities: { tools: {} } },
@@ -48,22 +43,10 @@ export function createMcpServer(store: ImpressionStore, log: (message: string) =
       outputSchema: searchAdImpressionsOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async (args) => {
-      const impressions = await searchImpressions(store, {
-        advertiser: args.advertiser,
-        terms: args.terms,
-        from: args.from === undefined ? undefined : new Date(args.from).toISOString(),
-        to: args.to === undefined ? undefined : new Date(args.to).toISOString(),
-        skipped: args.skipped,
-        limit: args.limit,
-      });
-      log(`[mcp] search_ad_impressions rows=${impressions.length}`);
-      const output = { impressions };
-      return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        structuredContent: output,
-      };
-    },
+    async () => ({
+      isError: true,
+      content: [{ type: "text" as const, text: "Tenant authentication required. Impression tools are temporarily unavailable with the shared MCP token." }],
+    }),
   );
 
   server.registerTool(
@@ -77,20 +60,10 @@ export function createMcpServer(store: ImpressionStore, log: (message: string) =
       outputSchema: getAdvertiserStatsOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async (args) => {
-      const stats = await getAdvertiserStats(store, {
-        advertiser: args.advertiser,
-        from: args.from === undefined ? undefined : new Date(args.from).toISOString(),
-        to: args.to === undefined ? undefined : new Date(args.to).toISOString(),
-        limit: args.limit,
-      });
-      const output = { stats };
-      log(`[mcp] get_advertiser_stats rows=${stats.length}`);
-      return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        structuredContent: output,
-      };
-    },
+    async () => ({
+      isError: true,
+      content: [{ type: "text" as const, text: "Tenant authentication required. Impression tools are temporarily unavailable with the shared MCP token." }],
+    }),
   );
 
   server.registerTool(
@@ -104,24 +77,10 @@ export function createMcpServer(store: ImpressionStore, log: (message: string) =
       outputSchema: getAdvertiserOverviewOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async (args) => {
-      const overview = await getAdvertiserOverview(store, args.advertiser);
-      log(`[mcp] get_advertiser_overview status=${overview.status} query=${overview.query}`);
-      const output = {
-        status: overview.status,
-        query: overview.query,
-        advertiser: overview.advertiser,
-        candidates: overview.candidates,
-        stats: overview.stats,
-        recent: overview.recent,
-        headlines: overview.headlines,
-        creativeTitles: overview.creativeTitles,
-      };
-      return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        structuredContent: output,
-      };
-    },
+    async () => ({
+      isError: true,
+      content: [{ type: "text" as const, text: "Tenant authentication required. Impression tools are temporarily unavailable with the shared MCP token." }],
+    }),
   );
 
   return server;

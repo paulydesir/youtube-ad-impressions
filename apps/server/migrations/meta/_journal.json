@@ -15,6 +15,13 @@
       "when": 1788462000000,
       "tag": "0001_fix_legacy_pod_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788800000000,
+      "tag": "0002_tenant_ownership",
+      "breakpoints": true
     }
   ]
 }

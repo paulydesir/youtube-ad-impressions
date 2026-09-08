@@ -1,3 +1,5 @@
+import { MCP_TOOL_NAMES } from "../src/mcp/server.js";
+const TEST_USER = "9c3f24dd-50ab-4f8c-a389-a860dd3053ae";
 import { mkdtempSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -55,7 +57,7 @@ let transport: StreamableHTTPClientTransport;
 
 async function store(input: Record<string, unknown>) {
   const { record, rawJson } = toAdImpressionV1(input);
-  await insertImpression(db, record, rawJson);
+  await insertImpression(db, TEST_USER, record, rawJson);
 }
 
 // Coursera acceptance scenario (§17) plus a second advertiser for rankings.
@@ -130,172 +132,19 @@ afterEach(async () => {
   closeDatabase(db);
 });
 
-function structured(result: Awaited<ReturnType<Client["callTool"]>>): Record<string, unknown> {
-  assert.ok(result.structuredContent !== undefined, "expected structured content");
-  return result.structuredContent as Record<string, unknown>;
-}
-
 describe("MCP tools", () => {
-  it("lists exactly the three read-only tools", async () => {
-    const { tools } = await client.listTools();
-    assert.deepEqual(
-      tools.map((tool) => tool.name).sort(),
-      ["get_advertiser_overview", "get_advertiser_stats", "search_ad_impressions"],
-    );
-    for (const tool of tools) {
-      assert.ok(
-        typeof tool.description === "string" && tool.description.length > 0,
-        `${tool.name} should describe when to use it`,
-      );
-      assert.equal(tool.annotations?.readOnlyHint, true);
-      assert.ok(tool.inputSchema !== undefined, `${tool.name} needs an input schema`);
+  it("lists tools but refuses user-data access until tenant authentication exists", async () => {
+    const listed = await client.listTools();
+    assert.deepEqual(listed.tools.map(tool => tool.name).sort(), [...MCP_TOOL_NAMES].sort());
+    for (const name of MCP_TOOL_NAMES) {
+      const result = await client.callTool({ name, arguments: name === "get_advertiser_overview" ? { advertiser: "coursera" } : {} });
+      assert.equal(result.isError, true);
+      assert.match(JSON.stringify(result.content), /Tenant authentication required/);
+      assert.equal(result.structuredContent, undefined);
     }
   });
-
-  it("retrieves Coursera observations via search_ad_impressions", async () => {
-    const result = await client.callTool({
-      name: "search_ad_impressions",
-      arguments: { advertiser: "coursera" },
-    });
-    assert.equal(result.isError, undefined);
-    const body = structured(result);
-    const impressions = body["impressions"] as Record<string, unknown>[];
-    assert.equal(impressions.length, 2);
-    assert.deepEqual(
-      impressions.map((row) => row["adHeadline"]).sort(),
-      ["Invest in Your Growth", "Save $70+"],
-    );
-    assert.ok(impressions.every((row) => !("rawJson" in row && "raw_json" in row)));
-    assert.ok(impressions.every((row) => !("rawJson" in row)));
-    assert.ok(impressions.every((row) => !("id" in row)));
-  });
-
-  it("treats Inspector's empty terms object as an omitted optional filter", async () => {
-    const result = await client.callTool({
-      name: "search_ad_impressions",
-      arguments: { advertiser: "coursera", terms: {} },
-    });
-
-    assert.equal(result.isError, undefined);
-    assert.equal((structured(result)["impressions"] as unknown[]).length, 2);
-  });
-
-  it("answers frequency questions via get_advertiser_stats", async () => {
-    const result = await client.callTool({ name: "get_advertiser_stats", arguments: {} });
-    assert.equal(result.isError, undefined);
-    const body = structured(result);
-    const stats = body["stats"] as Record<string, unknown>[];
-    assert.equal(stats[0]?.["advertiser"], "coursera.org");
-    assert.equal(stats[0]?.["impressionCount"], 2);
-    assert.equal(stats[0]?.["skipRate"], 0);
-    assert.equal(stats[1]?.["advertiser"], "granola.ai");
-  });
-
-  it("answers single-advertiser questions via get_advertiser_overview", async () => {
-    const result = await client.callTool({
-      name: "get_advertiser_overview",
-      arguments: { advertiser: "Coursera" },
-    });
-    assert.equal(result.isError, undefined);
-    const body = structured(result);
-    assert.equal(body["status"], "found");
-    assert.equal(body["advertiser"], "coursera.org");
-    const stats = body["stats"] as Record<string, unknown>;
-    assert.equal(stats["impressionCount"], 2);
-    assert.equal((body["recent"] as unknown[]).length, 2);
-    assert.deepEqual(body["headlines"], ["Invest in Your Growth", "Save $70+"]);
-    assert.deepEqual(body["creativeTitles"], ["Coursera: Grow Your Career"]);
-    assert.ok(!("rawJson" in (body["recent"] as Record<string, unknown>[])[0]!));
-  });
-
-  it("returns empty data for an unknown advertiser", async () => {
-    const result = await client.callTool({
-      name: "get_advertiser_overview",
-      arguments: { advertiser: "nobody" },
-    });
-    const body = structured(result);
-    assert.equal(body["status"], "not_found");
-    assert.deepEqual(body["candidates"], []);
-    assert.equal(body["stats"], null);
-    assert.deepEqual(body["recent"], []);
-    assert.deepEqual(body["headlines"], []);
-  });
-
-  it("enforces result limits server-side", async () => {
-    const limited = await client.callTool({
-      name: "search_ad_impressions",
-      arguments: { limit: 1 },
-    });
-    assert.equal((structured(limited)["impressions"] as unknown[]).length, 1);
-    const ranked = await client.callTool({
-      name: "get_advertiser_stats",
-      arguments: { limit: 1 },
-    });
-    assert.equal((structured(ranked)["stats"] as unknown[]).length, 1);
-  });
-
-  it("returns ambiguity instead of combining multiple advertiser keys", async () => {
-    await store(
-      impression("evt-google", {
-        advertiser_name: "Google Search",
-        advertiser_domain: "google.com",
-        creative_title: "Search creative",
-      }),
-    );
-    await store(
-      impression("evt-cloud", {
-        advertiser_name: "Google Cloud",
-        advertiser_domain: "cloud.google.com",
-        creative_title: "Cloud creative",
-      }),
-    );
-
-    const result = await client.callTool({
-      name: "get_advertiser_overview",
-      arguments: { advertiser: "google" },
-    });
-    const body = structured(result);
-    assert.equal(body["status"], "ambiguous");
-    assert.deepEqual(
-      (body["candidates"] as string[]).sort(),
-      ["cloud.google.com", "google.com"],
-    );
-    assert.equal(body["stats"], null);
-    assert.deepEqual(body["recent"], []);
-  });
-
-  it("validates date ranges and normalizes offsets to UTC", async () => {
-    const invalid = await client.callTool({
-      name: "search_ad_impressions",
-      arguments: { from: "yesterday" },
-    });
-    const reversed = await client.callTool({
-      name: "get_advertiser_stats",
-      arguments: {
-        from: "2026-09-03T00:00:00.000Z",
-        to: "2026-09-01T00:00:00.000Z",
-      },
-    });
-    const normalized = await client.callTool({
-      name: "search_ad_impressions",
-      arguments: {
-        advertiser: "coursera",
-        from: "2026-09-01T08:00:00-04:00",
-        to: "2026-09-01T08:00:01-04:00",
-      },
-    });
-
-    assert.equal(invalid.isError, true);
-    assert.equal(reversed.isError, true);
-    assert.equal(
-      (structured(normalized)["impressions"] as unknown[]).length,
-      1,
-    );
-  });
-
-  it("rejects calls to unknown tools", async () => {
-    const result = await client.callTool({ name: "run_sql", arguments: {} });
-    assert.equal(result.isError, true);
+  it("rejects unknown tools", async () => {
+    assert.equal((await client.callTool({ name: "run_sql", arguments: {} })).isError, true);
   });
 });
 

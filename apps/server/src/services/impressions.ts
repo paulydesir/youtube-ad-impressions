@@ -50,17 +50,19 @@ function toStatsDto(row: {
 // Newest first; limits are clamped by the repository (default 20, max 100).
 export async function searchImpressions(
   store: ImpressionStore,
+  userId: string,
   filters: ImpressionFilters = {},
 ): Promise<ImpressionDto[]> {
-  return store.searchImpressions(filters);
+  return store.searchImpressions(userId, filters);
 }
 
 // Advertiser rankings and rates: frequency, total watch time, skip rate.
 export async function getAdvertiserStats(
   store: ImpressionStore,
+  userId: string,
   filters: AdvertiserStatsFilters = {},
 ): Promise<AdvertiserStatsDto[]> {
-  return (await store.getAdvertiserStats(filters)).map(toStatsDto);
+  return (await store.getAdvertiserStats(userId, filters)).map(toStatsDto);
 }
 
 // Resolves one observed advertiser key before returning any data. Exact keys
@@ -68,10 +70,11 @@ export async function getAdvertiserStats(
 // returned as candidates instead of being silently combined.
 export async function getAdvertiserOverview(
   store: ImpressionStore,
+  userId: string,
   advertiser: string,
 ): Promise<AdvertiserOverviewDto> {
   const query = advertiser.trim();
-  const exact = await store.getAdvertiserOverviewData(query);
+  const exact = await store.getAdvertiserOverviewData(userId, query);
   if (exact.stats !== null) {
     return {
       status: "found",
@@ -85,7 +88,7 @@ export async function getAdvertiserOverview(
     };
   }
 
-  const candidates = (await store.getAdvertiserStats({ advertiser: query, limit: 100 }))
+  const candidates = (await store.getAdvertiserStats(userId, { advertiser: query, limit: 100 }))
     .map((candidate) => candidate.advertiser);
   if (candidates.length !== 1) {
     return {
@@ -100,7 +103,7 @@ export async function getAdvertiserOverview(
     };
   }
 
-  const overview = await store.getAdvertiserOverviewData(candidates[0]!);
+  const overview = await store.getAdvertiserOverviewData(userId, candidates[0]!);
   return {
     status: "found",
     query,

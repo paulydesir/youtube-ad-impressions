@@ -1,4 +1,10 @@
-import { boolean, index, integer, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+
+// Supabase owns profile creation through its auth.users trigger. This minimal
+// declaration exists only so application tables can reference public.profiles.
+export const profiles = pgTable("profiles", {
+  id: uuid("id").primaryKey(),
+});
 
 // PostgreSQL port of the SQLite MVP table in ../schema.ts. Column names and
 // nullability match intentionally so the SQLite and Postgres repositories
@@ -8,6 +14,9 @@ export const adImpressions = pgTable(
   "ad_impressions",
   {
     id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
     eventId: text("event_id").notNull(),
     schemaVersion: integer("schema_version").notNull(),
     source: text("source").notNull(),
@@ -33,7 +42,7 @@ export const adImpressions = pgTable(
     ingestedAt: text("ingested_at").notNull(),
   },
   (table) => [
-    uniqueIndex("ad_impressions_event_id_unique").on(table.eventId),
+    uniqueIndex("ad_impressions_user_id_event_id_unique").on(table.userId, table.eventId),
     index("ad_impressions_started_at_idx").on(table.startedAt),
     index("ad_impressions_advertiser_domain_idx").on(table.advertiserDomain),
     index("ad_impressions_host_video_id_idx").on(table.hostVideoId),

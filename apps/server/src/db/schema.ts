@@ -7,7 +7,9 @@ export const adImpressions = sqliteTable(
   "ad_impressions",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    eventId: text("event_id").notNull().unique(),
+    // Unowned legacy SQLite rows stay inaccessible; every new repository write requires ownership.
+    userId: text("user_id"),
+    eventId: text("event_id").notNull(),
     schemaVersion: integer("schema_version").notNull(),
     source: text("source").notNull(),
     startedAt: text("started_at").notNull(),
@@ -32,7 +34,7 @@ export const adImpressions = sqliteTable(
     ingestedAt: text("ingested_at").notNull(),
   },
   (table) => [
-    uniqueIndex("ad_impressions_event_id_unique").on(table.eventId),
+    uniqueIndex("ad_impressions_user_id_event_id_unique").on(table.userId, table.eventId),
     index("ad_impressions_started_at_idx").on(table.startedAt),
     index("ad_impressions_advertiser_domain_idx").on(table.advertiserDomain),
     index("ad_impressions_host_video_id_idx").on(table.hostVideoId),

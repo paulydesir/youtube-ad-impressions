@@ -158,3 +158,9 @@ It does not replace the manual unpacked-extension check above.
 Impression ownership, OAuth, and MCP authentication changes are outside this slice.
 Authenticated accounts currently access the same impression history; per-user
 record ownership and filtering remain a separate step.
+
+## Next implementation
+
+[Tenant ownership for ad impressions](docs/specs/next-tenant-ownership.md): require
+JWT-derived `userId` at every repository boundary, scope writes/reads/analytics,
+and verify isolation between two users.

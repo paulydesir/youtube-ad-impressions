@@ -6,8 +6,9 @@ import pg from "pg";
 import { sampleImpression } from "../../extension/test/sample-impression.js";
 import { createApp } from "../src/http/app.js";
 import { createTokenVerifier } from "../src/http/supabase-auth.js";
-import { initializeDatabase, closeDatabase } from "../src/db/client.js";
-import { createSqliteStore } from "../src/repositories/store.js";
+import { drizzle } from "drizzle-orm/node-postgres";
+import * as schema from "../src/db/postgres/schema.js";
+import { createPostgresStore } from "../src/repositories/store.js";
 
 // jsdom belongs to the extension workspace; this test exercises its actual popup.
 const require = createRequire(new URL("../../extension/package.json", import.meta.url));
@@ -15,10 +16,10 @@ const { JSDOM } = require("jsdom");
 const { build } = require("esbuild");
 it.skipIf(process.env.AUTH_INTEGRATION !== "1")("local popup signup, profile trigger, login, restore, bearer /me, logout and cascade", async () => {
   const status = JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json"], { cwd: new URL("../../../", import.meta.url), encoding: "utf8" }));
-  const db = new pg.Client({ connectionString: status.DB_URL });
-  await db.connect();
-  const sqlite = initializeDatabase(":memory:");
-  const app = createApp({ store: createSqliteStore(sqlite), isDatabaseReady: async () => true, mcpToken: "test-mcp", verifyAccessToken: createTokenVerifier(status.API_URL, status.ANON_KEY) });
+  const db = new pg.Pool({ connectionString: status.DB_URL });
+  await db.query("select 1");
+
+  const app = createApp({ store: createPostgresStore(drizzle(db, { schema })), isDatabaseReady: async () => true, mcpToken: "test-mcp", verifyAccessToken: createTokenVerifier(status.API_URL, status.ANON_KEY) });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>(resolve => server.once("listening", resolve));
   const address = server.address() as { port: number };
@@ -124,7 +125,7 @@ it.skipIf(process.env.AUTH_INTEGRATION !== "1")("local popup signup, profile tri
   } finally {
     dom?.window.close(); worker?.window.close();
     await db.query("delete from auth.users where email = $1", [email]);
-    await db.end(); closeDatabase(sqlite);
+    await db.end();
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 }, 30000);
