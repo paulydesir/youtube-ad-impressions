@@ -19,7 +19,7 @@ it.skipIf(process.env.AUTH_INTEGRATION !== "1")("local popup signup, profile tri
   const db = new pg.Pool({ connectionString: status.DB_URL });
   await db.query("select 1");
 
-  const app = createApp({ store: createPostgresStore(drizzle(db, { schema })), isDatabaseReady: async () => true, mcpToken: "test-mcp", verifyAccessToken: createTokenVerifier(status.API_URL, status.ANON_KEY) });
+  const app = createApp({ store: createPostgresStore(drizzle(db, { schema })), isDatabaseReady: async () => true, verifyAccessToken: createTokenVerifier(status.API_URL, status.ANON_KEY) });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>(resolve => server.once("listening", resolve));
   const address = server.address() as { port: number };

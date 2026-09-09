@@ -17,7 +17,7 @@ it.skipIf(process.env.AUTH_INTEGRATION !== "1")("real Supabase users have isolat
   const config = JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json"], { cwd: new URL("../../../", import.meta.url), encoding: "utf8" }));
   const pool = new pg.Pool({ connectionString: config.DB_URL });
   const store = createPostgresStore(drizzle(pool, { schema }));
-  const app = createApp({ store, isDatabaseReady: async () => true, mcpToken: "mcp-test", verifyAccessToken: createTokenVerifier(config.API_URL, config.ANON_KEY) });
+  const app = createApp({ store, isDatabaseReady: async () => true, verifyAccessToken: createTokenVerifier(config.API_URL, config.ANON_KEY) });
   const users: Array<{ id: string; token: string }> = [];
   try {
     for (const name of ["alice", "bob"]) {
@@ -28,7 +28,7 @@ it.skipIf(process.env.AUTH_INTEGRATION !== "1")("real Supabase users have isolat
     }
     const [alice, bob] = users as [typeof users[number], typeof users[number]];
     const body = async (event: string, headline: string) => toAdImpressionV1(sampleImpression({ event_id: event, advertiser_url: "shared.example", ad_headline: headline, creative_title: headline }));
-    const post = (user: typeof alice, payload: unknown, path = "") => request(app).post(`/api/v1/impressions${path}`).set("Authorization", `Bearer ${user.token}`).send(payload);
+    const post = (user: typeof alice, payload: object, path = "") => request(app).post(`/api/v1/impressions${path}`).set("Authorization", `Bearer ${user.token}`).send(payload);
     const a1 = await body("shared-event", "Alice private");
     expect((await post(alice, { ...a1, userId: bob.id, user_id: bob.id })).status).toBe(201);
     expect((await post(alice, a1)).body.duplicate).toBe(true);

@@ -1,5 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ImpressionStore } from "../repositories/store.js";
+import { requireUserId } from "../repositories/tenant.js";
+import { searchImpressions, getAdvertiserStats, getAdvertiserOverview } from "../services/impressions.js";
 import {
   getAdvertiserOverviewInputShape,
   getAdvertiserOverviewOutputSchema,
@@ -26,7 +28,18 @@ const READ_ONLY_ANNOTATIONS = {
 // data. Handlers call the structured query services only: no web search, no
 // SQL, no writes. Limits are enforced by the Zod input schemas (max 100) and
 // again by the repository layer.
-export function createMcpServer(_store: ImpressionStore, _log: (message: string) => void = console.info): McpServer {
+export function createMcpServer(store: ImpressionStore, userId: string, log: (message: string) => void = console.info): McpServer {
+  requireUserId(userId);
+  async function result(name: string, query: () => Promise<Record<string, unknown>>) {
+    try {
+      const structuredContent = await query();
+      log(`MCP tool=${name} outcome=success`);
+      return { structuredContent, content: [{ type: "text" as const, text: JSON.stringify(structuredContent) }] };
+    } catch {
+      log(`MCP tool=${name} outcome=error`);
+      return { isError: true, content: [{ type: "text" as const, text: "Unable to load impressions. Please try again." }] };
+    }
+  }
   const server = new McpServer(
     { name: "youtube-ad-impressions", version: "0.1.0" },
     { capabilities: { tools: {} } },
@@ -43,10 +56,7 @@ export function createMcpServer(_store: ImpressionStore, _log: (message: string)
       outputSchema: searchAdImpressionsOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async () => ({
-      isError: true,
-      content: [{ type: "text" as const, text: "Tenant authentication required. Impression tools are temporarily unavailable with the shared MCP token." }],
-    }),
+    async filters => result("search_ad_impressions", async () => ({ impressions: await searchImpressions(store, userId, filters) })),
   );
 
   server.registerTool(
@@ -60,10 +70,7 @@ export function createMcpServer(_store: ImpressionStore, _log: (message: string)
       outputSchema: getAdvertiserStatsOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async () => ({
-      isError: true,
-      content: [{ type: "text" as const, text: "Tenant authentication required. Impression tools are temporarily unavailable with the shared MCP token." }],
-    }),
+    async filters => result("get_advertiser_stats", async () => ({ stats: await getAdvertiserStats(store, userId, filters) })),
   );
 
   server.registerTool(
@@ -77,10 +84,7 @@ export function createMcpServer(_store: ImpressionStore, _log: (message: string)
       outputSchema: getAdvertiserOverviewOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async () => ({
-      isError: true,
-      content: [{ type: "text" as const, text: "Tenant authentication required. Impression tools are temporarily unavailable with the shared MCP token." }],
-    }),
+    async ({ advertiser }) => result("get_advertiser_overview", async () => ({ ...await getAdvertiserOverview(store, userId, advertiser) })),
   );
 
   return server;

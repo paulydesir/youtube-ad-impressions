@@ -7,7 +7,8 @@ import express, {
 } from "express";
 import type { ImpressionStore } from "../repositories/store.js";
 import { createMcpRouter } from "../mcp/router.js";
-import { requireBearerToken } from "./auth.js";
+import { createMcpMetadataRouter, requireMcpAuth, type McpAuthOptions } from "../mcp/auth.js";
+import { createConsentRouter, type ConsentOptions } from "../oauth/router.js";
 import { createImpressionsRouter } from "./impressions.js";
 
 import { requireSupabaseAuth, type VerifyAccessToken, type AuthenticatedRequest } from "./supabase-auth.js";
@@ -17,7 +18,8 @@ export interface AppOptions {
   store: ImpressionStore;
   // Backend readiness probe. Async because PostgreSQL checks require I/O.
   isDatabaseReady: () => Promise<boolean>;
-  mcpToken: string;
+  mcpAuth?: McpAuthOptions;
+  consent?: ConsentOptions;
   requestLog?: (message: string) => void;
   // Operational trace log (ingest outcomes, MCP tool calls). Defaults to
   // console.info; never receives request bodies or tokens.
@@ -62,7 +64,9 @@ export function createApp(options: AppOptions): Express {
   }
   // Authenticate MCP before parsing potentially large request bodies. The
   // ingestion API retains its route-specific bearer check below.
-  app.use("/mcp", requireBearerToken(options.mcpToken));
+  if (options.mcpAuth) app.use(createMcpMetadataRouter(options.mcpAuth));
+  if (options.consent) app.use("/oauth", createConsentRouter(options.consent));
+  app.use("/mcp", requireMcpAuth(options.mcpAuth));
   // 500 records of ~1KB each fit comfortably; the default 100kb would not.
   app.use(express.json({ limit: "5mb" }));
 

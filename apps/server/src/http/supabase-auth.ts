@@ -16,6 +16,7 @@ export function createTokenVerifier(url: string, key: string): VerifyAccessToken
       || !(Array.isArray(claims.aud) ? claims.aud.includes("authenticated") : claims.aud === "authenticated")
       || !claims.exp || claims.exp <= Date.now() / 1000
       || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(claims.sub)
+      || claims.client_id !== undefined
       || typeof claims.email !== "string") throw new Error("Invalid access token");
     return { userId: claims.sub, email: claims.email };
   };

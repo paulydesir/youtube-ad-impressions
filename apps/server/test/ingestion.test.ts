@@ -15,7 +15,6 @@ import { createApp } from "../src/http/app.js";
 import { createSqliteStore } from "../src/repositories/store.js";
 
 const TOKEN = "ingest-test-token";
-const MCP_TOKEN = "mcp-test-token";
 
 function impression(eventId: string): Record<string, unknown> {
   return {
@@ -56,7 +55,6 @@ beforeEach(() => {
       if (token !== TOKEN) throw new Error("Invalid token");
       return { userId: "9c3f24dd-50ab-4f8c-a389-a860dd3053ae", email: "test@example.com" };
     },
-    mcpToken: MCP_TOKEN,
   });
 });
 

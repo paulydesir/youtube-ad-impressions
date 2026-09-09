@@ -14,8 +14,10 @@
     "migrate:pg": "tsx scripts/migrate-pg.ts",
     "db:generate-pg": "drizzle-kit generate --config=drizzle.pg.config.ts",
     "import": "tsx scripts/import-export.ts",
-    "prebuild": "npm run build --workspace @ad-impressions/contracts",
-    "pretest": "npm run build --workspace @ad-impressions/contracts"
+    "prebuild": "npm run build --workspace @ad-impressions/contracts && npm run build:consent",
+    "pretest": "npm run build --workspace @ad-impressions/contracts && npm run build:consent",
+    "build:consent": "node scripts/build-consent.mjs",
+    "predev": "npm run build:consent"
   },
   "dependencies": {
     "@ad-impressions/contracts": "0.1.0",
@@ -25,6 +27,7 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "jose": "^6.2.12",
     "pg": "^8.23.0",
     "zod": "^4.3.6"
   },
@@ -35,6 +38,8 @@
     "@types/pg": "^8.23.1",
     "@types/supertest": "^6.0.3",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.28.2",
+    "jsdom": "^29.1.1",
     "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",

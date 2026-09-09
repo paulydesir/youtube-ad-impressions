@@ -5,6 +5,7 @@ import { loadConfig } from "./config/env.js";
 import { openDatabase } from "./db/database.js";
 import { createTokenVerifier } from "./http/supabase-auth.js";
 import { createApp } from "./http/app.js";
+import { createMcpTokenVerifier } from "./mcp/auth.js";
 
 // Load apps/server/.env regardless of the working directory callers run
 // from (e.g. `npm run dev` at the repo root). In dev this file sits next to
@@ -43,7 +44,15 @@ async function main(): Promise<void> {
       ? createTokenVerifier(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY) : undefined,
     store: database.store,
     isDatabaseReady: () => database.isReady(),
-    mcpToken: config.MCP_API_TOKEN,
+    mcpAuth: {
+      resourceUrl: config.MCP_RESOURCE_URL,
+      supabaseUrl: config.SUPABASE_URL,
+      verifyAccessToken: createMcpTokenVerifier(config.SUPABASE_URL, config.MCP_RESOURCE_URL),
+    },
+    consent: config.SUPABASE_PUBLISHABLE_KEY ? {
+      supabaseUrl: config.SUPABASE_URL,
+      publishableKey: config.SUPABASE_PUBLISHABLE_KEY,
+    } : undefined,
     requestLog: verbose
       ? (message) => console.info(`[Ad Impressions Server] ${message}`)
       : undefined,

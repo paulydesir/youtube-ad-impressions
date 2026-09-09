@@ -15,7 +15,6 @@ import { createApp } from "../src/http/app.js";
 import { createSqliteStore } from "../src/repositories/store.js";
 
 const TOKEN = "test-token";
-const MCP_TOKEN = "mcp-test-token";
 
 let db: DatabaseClient;
 
@@ -41,7 +40,6 @@ function testApp(requestLog?: (message: string) => void) {
       if (token !== TOKEN) throw new Error("Invalid token");
       return { userId: "9c3f24dd-50ab-4f8c-a389-a860dd3053ae", email: "test@example.com" };
     },
-    mcpToken: MCP_TOKEN,
     requestLog,
   });
 }
@@ -76,13 +74,13 @@ describe("GET /healthz", () => {
 describe("loadConfig", () => {
   it("applies defaults for optional values", () => {
     assert.deepEqual(
-      loadConfig({ INGEST_API_TOKEN: TOKEN, MCP_API_TOKEN: MCP_TOKEN }),
+      loadConfig({}),
       {
       SUPABASE_URL: "http://127.0.0.1:54321",
       PORT: 8787,
       HOST: "127.0.0.1",
       DATABASE_FILE: "./data/ad-impressions.sqlite",
-      MCP_API_TOKEN: MCP_TOKEN,
+      MCP_RESOURCE_URL: "http://127.0.0.1:8787/mcp",
       LOG_LEVEL: "info",
       POSTGRES_USER: "ad_impressions",
       POSTGRES_PASSWORD: "ad_impressions",
@@ -93,17 +91,19 @@ describe("loadConfig", () => {
   });
 
   it("does not require an ingestion token", () => {
-    assert.doesNotThrow(() => loadConfig({ MCP_API_TOKEN: MCP_TOKEN }));
+    assert.doesNotThrow(() => loadConfig({}));
   });
-  it("rejects a missing MCP token", () => {
-    assert.throws(() => loadConfig({}), /MCP_API_TOKEN/);
+  it("rejects unsafe resource URLs", () => {
+    for (const url of ["http://example.com/mcp", "https://user:pass@example.com/mcp", "https://example.com/mcp#fragment", "https://example.com/mcp?token=x"]) {
+      assert.throws(() => loadConfig({ MCP_RESOURCE_URL: url }), /MCP_RESOURCE_URL/);
+    }
   });
 
   it("rejects an invalid port with a clear message", () => {
     assert.throws(
       () =>
         loadConfig({
-              MCP_API_TOKEN: MCP_TOKEN,
+              MCP_RESOURCE_URL: "http://127.0.0.1:8787/mcp",
           PORT: "not-a-port",
         }),
       /Invalid server configuration: PORT/,
@@ -114,7 +114,7 @@ describe("loadConfig", () => {
     assert.throws(
       () =>
         loadConfig({
-              MCP_API_TOKEN: MCP_TOKEN,
+              MCP_RESOURCE_URL: "http://127.0.0.1:8787/mcp",
           LOG_LEVEL: "verbose",
         }),
       /Invalid server configuration: LOG_LEVEL/,

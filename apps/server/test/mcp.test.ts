@@ -1,4 +1,6 @@
+import { searchAdImpressionsOutputSchema, getAdvertiserStatsOutputSchema, getAdvertiserOverviewOutputSchema } from "../src/mcp/schemas.js";
 import { MCP_TOOL_NAMES } from "../src/mcp/server.js";
+const OTHER_USER = "41b87895-7604-44d2-a117-31dd6745d8d8";
 const TEST_USER = "9c3f24dd-50ab-4f8c-a389-a860dd3053ae";
 import { mkdtempSync } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -85,11 +87,18 @@ async function startMcpClient(): Promise<Client> {
   const app = createApp({
     store: createSqliteStore(db),
     isDatabaseReady: () => Promise.resolve(isDatabaseReady(db)),
+    mcpAuth: {
+      resourceUrl: "https://ads.example.com/mcp",
+      supabaseUrl: "https://project.supabase.co",
+      verifyAccessToken: async token => {
+        if (token !== MCP_TOKEN && token !== "other-user-token") throw new Error("Invalid token");
+        return { userId: token === MCP_TOKEN ? TEST_USER : OTHER_USER, email: "test@example.com" };
+      },
+    },
     verifyAccessToken: async token => {
       if (token !== INGEST_TOKEN) throw new Error("Invalid token");
       return { userId: "9c3f24dd-50ab-4f8c-a389-a860dd3053ae", email: "test@example.com" };
     },
-    mcpToken: MCP_TOKEN,
   });
   httpServer = createServer(app);
   await new Promise<void>((resolve) => {
@@ -110,6 +119,8 @@ beforeEach(async () => {
   const dir = mkdtempSync(join(tmpdir(), "ad-impressions-mcp-"));
   db = initializeDatabase(join(dir, "test.sqlite"));
   await seedScenario();
+  const { record, rawJson } = toAdImpressionV1(impression("other-private", { advertiser_name: "Other only", advertiser_domain: "private.example", ad_headline: "Other secret" }));
+  await insertImpression(db, OTHER_USER, record, rawJson);
   await startMcpClient();
 });
 
@@ -133,15 +144,42 @@ afterEach(async () => {
 });
 
 describe("MCP tools", () => {
-  it("lists tools but refuses user-data access until tenant authentication exists", async () => {
+  it("lists and runs all three tools with only the authenticated user's data", async () => {
     const listed = await client.listTools();
     assert.deepEqual(listed.tools.map(tool => tool.name).sort(), [...MCP_TOOL_NAMES].sort());
-    for (const name of MCP_TOOL_NAMES) {
-      const result = await client.callTool({ name, arguments: name === "get_advertiser_overview" ? { advertiser: "coursera" } : {} });
-      assert.equal(result.isError, true);
-      assert.match(JSON.stringify(result.content), /Tenant authentication required/);
-      assert.equal(result.structuredContent, undefined);
-    }
+    const search = await client.callTool({ name: "search_ad_impressions", arguments: { userId: OTHER_USER } });
+    assert.equal(search.isError, undefined);
+    assert.equal(searchAdImpressionsOutputSchema.parse(search.structuredContent).impressions.length, 3);
+    assert.ok(!JSON.stringify(search).includes("Other secret"));
+    const stats = await client.callTool({ name: "get_advertiser_stats", arguments: {} });
+    assert.equal(getAdvertiserStatsOutputSchema.parse(stats.structuredContent).stats.length, 2);
+    const overview = await client.callTool({ name: "get_advertiser_overview", arguments: { advertiser: "coursera" } });
+    assert.equal(getAdvertiserOverviewOutputSchema.parse(overview.structuredContent).status, "found");
+    assert.equal(getAdvertiserOverviewOutputSchema.parse(overview.structuredContent).stats!.impressionCount, 2);
+    const privateOverview = await client.callTool({ name: "get_advertiser_overview", arguments: { advertiser: "private.example" } });
+    assert.equal(getAdvertiserOverviewOutputSchema.parse(privateOverview.structuredContent).status, "not_found");
+  });
+
+  it("isolates concurrent clients and ignores forged user IDs", async () => {
+    const { port } = httpServer.address() as AddressInfo;
+    const other = new Client({ name: "other", version: "1" });
+    await other.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp?userId=${TEST_USER}`), {
+      requestInit: { headers: { Authorization: "Bearer other-user-token", "X-User-Id": TEST_USER } },
+    }));
+    try {
+      for (const name of MCP_TOOL_NAMES) {
+        const args = name === "get_advertiser_overview" ? { advertiser: "private.example", userId: TEST_USER } : { userId: TEST_USER };
+        const [a, b] = await Promise.all([client.callTool({ name, arguments: args }), other.callTool({ name, arguments: args })]);
+        assert.ok(!JSON.stringify(a).includes("Other secret"));
+        assert.ok(!JSON.stringify(b).includes("coursera"));
+        assert.ok(JSON.stringify(b).includes("private.example"));
+        assert.equal(b.isError, undefined);
+      }
+    } finally { await other.close(); }
+  });
+
+  it("validates tool inputs", async () => {
+    assert.equal((await client.callTool({ name: "search_ad_impressions", arguments: { limit: 101 } })).isError, true);
   });
   it("rejects unknown tools", async () => {
     assert.equal((await client.callTool({ name: "run_sql", arguments: {} })).isError, true);
@@ -149,7 +187,7 @@ describe("MCP tools", () => {
 });
 
 describe("MCP transport", () => {
-  it("requires the dedicated MCP bearer token", async () => {
+  it("requires an OAuth bearer token before parsing request bodies", async () => {
     const { port } = httpServer.address() as AddressInfo;
     const endpoint = `http://127.0.0.1:${port}/mcp`;
     const unauthorized = await fetch(endpoint, {
@@ -168,7 +206,7 @@ describe("MCP transport", () => {
 
     assert.equal(unauthorized.status, 401);
     assert.equal(wrongToken.status, 401);
-    assert.equal(unauthorized.headers.get("www-authenticate"), "Bearer");
+    assert.equal(unauthorized.headers.get("www-authenticate"), 'Bearer resource_metadata="https://ads.example.com/.well-known/oauth-protected-resource/mcp"');
   });
 
   it("rejects GET /mcp with 405 in stateless mode", async () => {

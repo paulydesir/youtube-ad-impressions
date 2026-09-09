@@ -31,7 +31,7 @@ npm run test:extension       # extension tests only
 5. Open a YouTube watch page and then open DevTools.
 
 Start the companion server with `npm run dev`, using `apps/server/.env` for
-`DATABASE_URL`, Supabase configuration, and the separate `MCP_API_TOKEN`.
+`DATABASE_URL`, Supabase configuration, and `MCP_RESOURCE_URL`.
 Sign in through the extension popup. All extension requests to the Node API use
 the current Supabase access token. There is no shared ingestion token to configure.
 
@@ -124,7 +124,8 @@ Run `npx supabase status` and copy its **publishable** (or legacy **anon**) key 
 Set `SUPABASE_URL=http://127.0.0.1:54321` in both files. The extension example is
 `apps/extension/.env.example`. Only these two public Supabase values are embedded
 at build time; never use the service-role key, secret key, or JWT signing secret.
-MCP retains its separate token; INGEST_API_TOKEN is no longer used.
+Neither `MCP_API_TOKEN` nor `INGEST_API_TOKEN` is used. MCP uses user-scoped
+OAuth; follow the [MCP OAuth setup guide](docs/mcp-oauth.md) to enable it.
 
 Run `npm run dev` and `npm run build:extension`, then load/reload `apps/extension`
 as an unpacked Chrome extension. Open the popup's Account section:
@@ -155,12 +156,8 @@ and history loading, refreshes an expired session, and checks logout blocks work
 requests. It removes its test user.
 It does not replace the manual unpacked-extension check above.
 
-Impression ownership, OAuth, and MCP authentication changes are outside this slice.
-Authenticated accounts currently access the same impression history; per-user
-record ownership and filtering remain a separate step.
-
-## Next implementation
-
-[Tenant ownership for ad impressions](docs/specs/next-tenant-ownership.md): require
-JWT-derived `userId` at every repository boundary, scope writes/reads/analytics,
-and verify isolation between two users.
+Impression writes, reads, and analytics are scoped to the authenticated account.
+The MCP endpoint uses Supabase OAuth 2.1 with PKCE, a browser consent page, and
+resource-bound access tokens. Its three read-only tools return only the granting
+user's records. See [MCP OAuth setup](docs/mcp-oauth.md) for the required Supabase
+hook, client registration, audience mapping, and verification steps.

@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { ImpressionStore } from "../repositories/store.js";
 import { createMcpServer } from "./server.js";
+import type { AuthenticatedRequest } from "../http/supabase-auth.js";
 
 function methodNotAllowed(res: Response): void {
   res.status(405).json({
@@ -18,7 +19,12 @@ export function createMcpRouter(store: ImpressionStore, log: (message: string) =
   const router = Router();
 
   router.post("/", async (req: Request, res: Response) => {
-    const server = createMcpServer(store, log);
+    const auth = (req as AuthenticatedRequest).auth;
+    if (!auth) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const server = createMcpServer(store, auth.userId, log);
     try {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
