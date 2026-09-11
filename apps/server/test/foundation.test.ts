@@ -1,41 +1,31 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import request from "supertest";
 import { loadConfig } from "../src/config/env.js";
-import {
-  closeDatabase,
-  initializeDatabase,
-  isDatabaseReady,
-  type DatabaseClient,
-} from "../src/db/client.js";
+import { loadRuntimeEnvironment } from "../src/config/runtime-environment.js";
 import { createApp } from "../src/http/app.js";
-import { createSqliteStore } from "../src/repositories/store.js";
+import type { ImpressionStore } from "../src/repositories/store.js";
 
 const TOKEN = "test-token";
 
-let db: DatabaseClient;
+let databaseReady = true;
 
-afterEach(() => {
-  // Tests may close the database themselves (unavailability probe); a second
-  // close is harmless.
-  try {
-    if (db !== undefined) closeDatabase(db);
-  } catch {
-    // Already closed.
-  }
-});
+afterEach(() => { databaseReady = true; });
+
+const store: ImpressionStore = {
+  insertImpression: async (_userId, record) => ({ status: "inserted", eventId: record.event_id }),
+  searchImpressions: async () => [],
+  getAdvertiserStats: async () => [],
+  getAdvertiserOverviewData: async () => ({ stats: null, recent: [], headlines: [], creativeTitles: [] }),
+};
 
 function testApp(requestLog?: (message: string) => void) {
-  const dir = mkdtempSync(join(tmpdir(), "ad-impressions-foundation-"));
-  db = initializeDatabase(join(dir, "test.sqlite"));
   return createApp({
-    store: createSqliteStore(db),
-    // Closes over the mutable `db` binding so the unavailability test below
-    // (which closes the database) still observes the failure.
-    isDatabaseReady: () => Promise.resolve(isDatabaseReady(db)),
+    store,
+    isDatabaseReady: () => Promise.resolve(databaseReady),
     verifyAccessToken: async token => {
       if (token !== TOKEN) throw new Error("Invalid token");
       return { userId: "9c3f24dd-50ab-4f8c-a389-a860dd3053ae", email: "test@example.com" };
@@ -53,7 +43,7 @@ describe("GET /healthz", () => {
 
   it("reports unavailability when the database cannot answer", async () => {
     const app = testApp();
-    closeDatabase(db);
+    databaseReady = false;
     const response = await request(app).get("/healthz");
     assert.equal(response.status, 503);
     assert.deepEqual(response.body, { ok: false, database: "unavailable" });
@@ -76,10 +66,11 @@ describe("loadConfig", () => {
     assert.deepEqual(
       loadConfig({}),
       {
+      APP_ENV: "development",
       SUPABASE_URL: "http://127.0.0.1:54321",
       PORT: 8787,
       HOST: "127.0.0.1",
-      DATABASE_FILE: "./data/ad-impressions.sqlite",
+      DATABASE_URL: "postgresql://ad_impressions:ad_impressions@127.0.0.1:5432/ad_impressions",
       MCP_RESOURCE_URL: "http://127.0.0.1:8787/mcp",
       LOG_LEVEL: "info",
       POSTGRES_USER: "ad_impressions",
@@ -92,6 +83,42 @@ describe("loadConfig", () => {
 
   it("does not require an ingestion token", () => {
     assert.doesNotThrow(() => loadConfig({}));
+  });
+  it("requires injected remote services in production", () => {
+    assert.throws(() => loadConfig({ APP_ENV: "production" }), /SUPABASE_URL/);
+    assert.deepEqual(
+      loadConfig({
+        APP_ENV: "production",
+        SUPABASE_URL: "https://project.supabase.co",
+        SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+        DATABASE_URL: "postgresql://user:password@db.example.com:5432/postgres",
+        MCP_RESOURCE_URL: "https://api.example.com/mcp",
+      }),
+      {
+        APP_ENV: "production",
+        SUPABASE_URL: "https://project.supabase.co/",
+        SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+        DATABASE_URL: "postgresql://user:password@db.example.com:5432/postgres",
+        MCP_RESOURCE_URL: "https://api.example.com/mcp",
+        PORT: 8787,
+        HOST: "0.0.0.0",
+        LOG_LEVEL: "info",
+        POSTGRES_USER: "ad_impressions",
+        POSTGRES_PASSWORD: "ad_impressions",
+        POSTGRES_DB: "ad_impressions",
+        POSTGRES_PORT: 5432,
+      },
+    );
+  });
+
+  it("rejects loopback service URLs in production", () => {
+    assert.throws(() => loadConfig({
+      APP_ENV: "production",
+      SUPABASE_URL: "http://127.0.0.1:54321",
+      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      DATABASE_URL: "postgresql://user:password@db.example.com:5432/postgres",
+      MCP_RESOURCE_URL: "https://api.example.com/mcp",
+    }), /SUPABASE_URL/);
   });
   it("rejects unsafe resource URLs", () => {
     for (const url of ["http://example.com/mcp", "https://user:pass@example.com/mcp", "https://example.com/mcp#fragment", "https://example.com/mcp?token=x"]) {
@@ -119,5 +146,23 @@ describe("loadConfig", () => {
         }),
       /Invalid server configuration: LOG_LEVEL/,
     );
+  });
+});
+
+describe("loadRuntimeEnvironment", () => {
+  it("loads ignored files only for development", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ad-impressions-env-"));
+    writeFileSync(join(dir, ".env.development.local"), "SUPABASE_URL=http://127.0.0.1:54321\n");
+    const env: NodeJS.ProcessEnv = {};
+    assert.equal(loadRuntimeEnvironment(dir, env), "development");
+    assert.equal(env.SUPABASE_URL, "http://127.0.0.1:54321");
+  });
+
+  it("does not read files in production", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ad-impressions-env-"));
+    writeFileSync(join(dir, ".env"), "DATABASE_URL=postgresql://local\n");
+    const env: NodeJS.ProcessEnv = { APP_ENV: "production" };
+    assert.equal(loadRuntimeEnvironment(dir, env), "production");
+    assert.equal(env.DATABASE_URL, undefined);
   });
 });

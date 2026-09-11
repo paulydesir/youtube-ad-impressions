@@ -1,23 +1,19 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
 import { loadConfig } from "./config/env.js";
+import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import { openDatabase } from "./db/database.js";
 import { createTokenVerifier } from "./http/supabase-auth.js";
 import { createApp } from "./http/app.js";
 import { createMcpTokenVerifier } from "./mcp/auth.js";
 
-// Load apps/server/.env regardless of the working directory callers run
-// from (e.g. `npm run dev` at the repo root). In dev this file sits next to
-// src/; in the compiled build it sits next to dist/.
-dotenv.config({
-  path: join(dirname(fileURLToPath(import.meta.url)), "..", ".env"),
-});
+const serverDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 async function main(): Promise<void> {
   let config;
   try {
-    config = loadConfig();
+    const appEnvironment = loadRuntimeEnvironment(serverDir);
+    config = loadConfig({ ...process.env, APP_ENV: appEnvironment });
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);
@@ -27,15 +23,14 @@ async function main(): Promise<void> {
   try {
     database = await openDatabase(config);
   } catch (error) {
-    const target =
-      config.DATABASE_URL !== undefined ? "PostgreSQL (DATABASE_URL)" : config.DATABASE_FILE;
     console.error(
-      `Failed to open database at ${target}: ${error instanceof Error ? error.message : error}`,
+      `Failed to open PostgreSQL database (DATABASE_URL): ${error instanceof Error ? error.message : error}`,
     );
     process.exit(1);
   }
 
   console.info(`Opened ${database.kind} database: ${database.label}`);
+  console.info(`Runtime environment: ${config.APP_ENV}`);
   console.info(`Database ready: ${await database.isReady()}`);
 
   const verbose = config.LOG_LEVEL === "debug" || config.LOG_LEVEL === "info";
@@ -68,8 +63,7 @@ async function main(): Promise<void> {
     process.exit(1);
   });
 
-  // The PostgreSQL pool holds the event loop open; close it (or the SQLite
-  // handle) before exiting so `docker stop` and Ctrl+C shut down cleanly.
+  // The PostgreSQL pool holds the event loop open, so close it before exiting.
   const shutdown = (signal: string) => {
     console.info(`Received ${signal}, closing database...`);
     void database

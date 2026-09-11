@@ -1,9 +1,9 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
+import { loadRuntimeEnvironment } from "../src/config/runtime-environment.js";
 
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-dotenv.config({ path: join(serverDir, ".env") });
+loadRuntimeEnvironment(serverDir);
 
 import {
   closePostgresDatabase,

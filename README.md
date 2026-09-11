@@ -30,8 +30,11 @@ npm run test:extension       # extension tests only
 4. Choose **Load unpacked** and select the `apps/extension` directory.
 5. Open a YouTube watch page and then open DevTools.
 
-Start the companion server with `npm run dev`, using `apps/server/.env` for
-`DATABASE_URL`, Supabase configuration, and `MCP_RESOURCE_URL`.
+Start the companion server with `npm run dev`. Development loads
+`apps/server/.env.development.local` first and supports the legacy
+`apps/server/.env` fallback for `DATABASE_URL`, Supabase configuration, and
+`MCP_RESOURCE_URL`. Start from `apps/server/.env.example` and keep the populated
+file untracked.
 Sign in through the extension popup. All extension requests to the Node API use
 the current Supabase access token. There is no shared ingestion token to configure.
 
@@ -144,6 +147,16 @@ It ignores client user IDs. Profile RLS is enabled with no client policies becau
 this slice does not need direct profile access. If the server public key is absent,
 these routes fail closed. Supabase access tokens already copied elsewhere may remain
 valid until expiry after logout; the extension clears its session and sends no token.
+
+### Production environment
+
+Set `APP_ENV=production` in the deployment platform and inject the variables in
+`apps/server/.env.production.example` through that platform's secret manager.
+Production never reads an env file from disk and startup fails if
+`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL`, or
+`MCP_RESOURCE_URL` is missing. Production Supabase must be remote and the MCP
+resource URL must use HTTPS. Keep database credentials and all secret keys out
+of the repository.
 
 Run `npm test` for normal tests. With local Supabase running and the migration
 applied, run `AUTH_INTEGRATION=1 npm run test --workspace @ad-impressions/server`.

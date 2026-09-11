@@ -7,7 +7,7 @@ import type { ImpressionStore } from "../src/repositories/store.js";
 
 // Live-Postgres coverage for the store abstraction and the pg repository.
 // Runs only when DATABASE_URL is set (e.g. with the compose database up);
-// otherwise the suite stays green on SQLite alone.
+// otherwise the integration suite is skipped.
 const describePostgres = describe.skipIf(process.env.DATABASE_URL === undefined);
 
 function impression(overrides: Record<string, unknown> = {}) {
@@ -43,8 +43,7 @@ describePostgres("postgres store (DATABASE_URL)", () => {
 
   beforeEach(async () => {
     database = await openDatabase({
-      DATABASE_URL: process.env.DATABASE_URL,
-      DATABASE_FILE: "./data/ad-impressions.sqlite",
+      DATABASE_URL: process.env.DATABASE_URL!,
     });
     assert.equal(database.kind, "postgres");
     store = database.store;

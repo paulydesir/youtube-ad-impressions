@@ -58,7 +58,7 @@ function clampLimit(limit: number | undefined, fallback: number): number {
 }
 
 // Case-insensitive substring match without LIKE wildcards, so user input
-// never needs escaping. Postgres uses strpos (SQLite uses instr).
+// never needs escaping.
 function contains(column: PgColumn, term: string) {
   return sql`strpos(lower(${column}), lower(${term})) > 0`;
 }
@@ -121,8 +121,7 @@ const compactColumns = {
 // Display key: observed domain first, then name, then a placeholder so
 // anonymous impressions still aggregate instead of vanishing. The fallback is
 // inlined as a literal (rather than bound as a param) so the SELECT and
-// GROUP BY expressions are textually identical — Postgres requires that,
-// while SQLite is lenient.
+// GROUP BY expressions are textually identical, as PostgreSQL requires.
 const advertiserKey = sql<string>`coalesce(${adImpressions.advertiserDomain}, ${adImpressions.advertiserName}, '(unknown)')`;
 
 function exactAdvertiserKeyCondition(value: string) {

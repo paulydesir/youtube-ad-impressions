@@ -11,8 +11,7 @@ export type PostgresDatabaseClient = NodePgDatabase<typeof schema> & {
 };
 
 // Opens a pooled PostgreSQL connection from DATABASE_URL and applies pending
-// migrations from apps/server/migrations-pg. SQLite remains the default local
-// path (see ../client.ts); use this only when DATABASE_URL is set.
+// migrations from apps/server/migrations-pg.
 export async function initializePostgresDatabase(
   connectionString: string,
 ): Promise<PostgresDatabaseClient> {
@@ -30,7 +29,7 @@ export async function initializePostgresDatabase(
   return db;
 }
 
-// Readiness probe mirroring isDatabaseReady in ../client.ts.
+// Runs the database readiness probe.
 export async function isPostgresDatabaseReady(
   db: PostgresDatabaseClient,
 ): Promise<boolean> {

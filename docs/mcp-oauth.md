@@ -27,7 +27,8 @@ The app serves a sign-in and consent page at `/oauth/consent`.
    audience mapping into that hook so its existing claims are preserved.
 4. Use an asymmetric Supabase signing key (ES256 or RS256), available through
    the project's JWKS endpoint. MCP deliberately rejects HS256 and ID tokens.
-5. Configure `apps/server/.env`:
+5. Configure `apps/server/.env.development.local` for local development, or
+   inject the same variables through the production host's environment:
 
    ```dotenv
    SUPABASE_URL=https://your-project.supabase.co

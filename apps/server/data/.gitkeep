@@ -1,2 +1,0 @@
-SQLite database files live here at runtime (see DATABASE_FILE).
-This directory holds no committed data; *.sqlite artifacts are gitignored.
