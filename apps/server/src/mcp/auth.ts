@@ -1,6 +1,5 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { Router, type RequestHandler } from "express";
-import { requireSupabaseAuth, type VerifyAccessToken } from "../http/supabase-auth.js";
+import { createTokenVerifier, requireSupabaseAuth, type VerifyAccessToken } from "../http/supabase-auth.js";
 import { requireUserId } from "../repositories/tenant.js";
 
 export interface McpAuthOptions {
@@ -12,21 +11,16 @@ export interface McpAuthOptions {
 // OAuth access tokens must target this resource. Supabase's default
 // "authenticated" audience (including extension sessions) is insufficient.
 export function createMcpTokenVerifier(supabaseUrl: string, resourceUrl: string): VerifyAccessToken {
-  const issuer = `${supabaseUrl.replace(/\/$/, "")}/auth/v1`;
-  const keys = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`));
-  return async token => {
-    const { payload } = await jwtVerify(token, keys, {
-      issuer,
-      audience: resourceUrl,
-      algorithms: ["ES256", "RS256"],
-      requiredClaims: ["sub", "exp", "iat", "client_id"],
-    });
-    if (typeof payload.client_id !== "string" || !payload.client_id
-      || payload.role !== "authenticated" || payload.is_anonymous === true) {
+  return createTokenVerifier(supabaseUrl, (claims, issuer) => {
+    const audience = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+    if (claims.iss !== issuer || !audience.includes(resourceUrl)
+      || typeof claims.exp !== "number" || typeof claims.iat !== "number"
+      || typeof claims.client_id !== "string" || !claims.client_id
+      || claims.role !== "authenticated" || claims.is_anonymous === true) {
       throw new Error("Invalid OAuth access token");
     }
-    return { userId: requireUserId(payload.sub!), email: typeof payload.email === "string" ? payload.email : "" };
-  };
+    return { userId: requireUserId(claims.sub), email: typeof claims.email === "string" ? claims.email : "" };
+  });
 }
 
 export function mcpMetadataPath(resourceUrl: string): string {
