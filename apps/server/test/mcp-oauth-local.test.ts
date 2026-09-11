@@ -35,7 +35,7 @@ it.skipIf(process.env.MCP_OAUTH_INTEGRATION !== "1")("real Supabase OAuth: disco
   const verifyMcp = createMcpTokenVerifier(config.API_URL, resourceUrl);
   const app = createApp({
     store, isDatabaseReady: async () => true,
-    verifyAccessToken: createTokenVerifier(config.API_URL, config.ANON_KEY),
+    verifyAccessToken: createTokenVerifier(config.API_URL),
     mcpAuth: { resourceUrl, supabaseUrl: config.API_URL, verifyAccessToken: verifyMcp },
   });
   http.on("request", app);

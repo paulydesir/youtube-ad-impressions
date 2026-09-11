@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { Router, type RequestHandler } from "express";
-import type { AuthenticatedRequest, VerifyAccessToken } from "../http/supabase-auth.js";
+import { requireSupabaseAuth, type VerifyAccessToken } from "../http/supabase-auth.js";
 import { requireUserId } from "../repositories/tenant.js";
 
 export interface McpAuthOptions {
@@ -48,21 +48,12 @@ export function createMcpMetadataRouter(options: McpAuthOptions): Router {
 }
 
 export function requireMcpAuth(options?: McpAuthOptions): RequestHandler {
-  return async (req, res, next) => {
-    const metadataUrl = options
-      ? new URL(mcpMetadataPath(options.resourceUrl), options.resourceUrl).href : undefined;
-    const match = /^Bearer ([^\s]+)$/i.exec(req.get("authorization") ?? "");
-    try {
-      if (!match || !options?.verifyAccessToken) throw new Error("Unauthorized");
-      (req as AuthenticatedRequest).auth = await options.verifyAccessToken(match[1]!);
-    } catch {
-      const parameters = [];
-      if (metadataUrl) parameters.push(`resource_metadata="${metadataUrl}"`);
-      if (match) parameters.push('error="invalid_token"');
-      res.set("WWW-Authenticate", `Bearer${parameters.length ? ` ${parameters.join(", ")}` : ""}`)
-        .status(401).json({ error: "unauthorized" });
-      return;
-    }
-    next();
-  };
+  const metadataUrl = options
+    ? new URL(mcpMetadataPath(options.resourceUrl), options.resourceUrl).href : undefined;
+  return requireSupabaseAuth(options?.verifyAccessToken, hasToken => {
+    const parameters = [];
+    if (metadataUrl) parameters.push(`resource_metadata="${metadataUrl}"`);
+    if (hasToken) parameters.push('error="invalid_token"');
+    return `Bearer${parameters.length ? ` ${parameters.join(", ")}` : ""}`;
+  });
 }

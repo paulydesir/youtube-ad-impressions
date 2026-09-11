@@ -20,12 +20,12 @@ describe("Supabase JWT middleware", () => {
     globalThis.fetch = async () => new Response(JSON.stringify({ keys: [jwk] }), { headers: { "Content-Type": "application/json" } });
     try {
       const app = express();
-      app.get("/me", requireSupabaseAuth(createTokenVerifier("http://localhost", "test-key")), (req, res) => {
+      app.get("/me", requireSupabaseAuth(createTokenVerifier("http://localhost")), (req, res) => {
         const auth = (req as AuthenticatedRequest).auth!;
         res.json({ id: auth.userId, email: auth.email });
       });
       expect((await request(app).get("/me")).status).toBe(401);
-      for (const token of ["bad", jwt({}, true), jwt({ exp: 1 }), jwt({ iss: "http://other/auth/v1" }), jwt({ aud: "anon" }), jwt({ sub: "" }), jwt({ client_id: "oauth-client" }), jwt({ aud: "https://ads.example.com/mcp", client_id: "oauth-client" })]) {
+      for (const token of ["bad", jwt({}, true), jwt({ exp: 1 }), jwt({ exp: undefined }), jwt({ nbf: Math.floor(Date.now()/1000)+600 }), jwt({ email: undefined }), jwt({ iss: "http://other/auth/v1" }), jwt({ aud: "anon" }), jwt({ sub: "" }), jwt({ client_id: "oauth-client" }), jwt({ aud: "https://ads.example.com/mcp", client_id: "oauth-client" })]) {
         expect((await request(app).get("/me").set("Authorization", `Bearer ${token}`)).status).toBe(401);
       }
       expect((await request(app).get("/me").set("Authorization", "Basic abc")).status).toBe(401);

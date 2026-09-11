@@ -29,11 +29,11 @@ try {
 }
 
 // Imports use a verified user token too; file contents cannot choose ownership.
-if (!process.env.IMPORT_ACCESS_TOKEN || !process.env.SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error("Set IMPORT_ACCESS_TOKEN and SUPABASE_PUBLISHABLE_KEY for an authenticated import.");
+if (!process.env.IMPORT_ACCESS_TOKEN) {
+  throw new Error("Set IMPORT_ACCESS_TOKEN for an authenticated import.");
 }
 const { userId } = await createTokenVerifier(
-  process.env.SUPABASE_URL ?? "http://127.0.0.1:54321", process.env.SUPABASE_PUBLISHABLE_KEY,
+  process.env.SUPABASE_URL ?? "http://127.0.0.1:54321",
 )(process.env.IMPORT_ACCESS_TOKEN);
 
 // Honors DATABASE_URL when set (PostgreSQL), otherwise the SQLite file.

@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   const verbose = config.LOG_LEVEL === "debug" || config.LOG_LEVEL === "info";
   const app = createApp({
     verifyAccessToken: config.SUPABASE_PUBLISHABLE_KEY
-      ? createTokenVerifier(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY) : undefined,
+      ? createTokenVerifier(config.SUPABASE_URL) : undefined,
     store: database.store,
     isDatabaseReady: () => database.isReady(),
     mcpAuth: {

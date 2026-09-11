@@ -22,6 +22,7 @@
   "dependencies": {
     "@ad-impressions/contracts": "0.1.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@supabase/server": "1.6.0",
     "@supabase/supabase-js": "^2.116.0",
     "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
