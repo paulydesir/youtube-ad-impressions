@@ -2,7 +2,6 @@ import type { AdImpressionRecord } from "../types.ts";
 import type { AdImpressionV1 } from "@ad-impressions/contracts";
 import { toAdImpressionV1 } from "../api/impression-mapper.ts";
 
-// Operations the application needs from the server-backed impression store.
 export interface ImpressionStore {
   addImpression(record: AdImpressionRecord): Promise<string>;
   getImpressions(): Promise<AdImpressionRecord[]>;
@@ -73,7 +72,8 @@ export function createServerImpressionStore(options: {
         throw new Error("The local server did not respond within 10 seconds. Check that it is running and retry.");
       }
       if (failure instanceof TypeError) {
-        throw new Error("Could not connect to the local server at http://127.0.0.1:8787. Start it with npm run dev and retry.");
+        const origin = new URL(options.endpoint).origin;
+        throw new Error(`Could not connect to the server at ${origin}. Check that it is running and retry.`);
       }
       throw failure;
     }

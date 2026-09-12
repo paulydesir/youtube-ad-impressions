@@ -1,7 +1,3 @@
-// Deduplicates repeated YouTube player observations into single ad lifecycles:
-// one `AdStateMachine` per player ad-pod, one `DomainImpressionTracker`
-// impression per advertiser-domain change within the pod.
-
 export const AD_CLASSES = ["ad-showing", "ad-interrupting"] as const;
 
 interface ClassListLike {
@@ -16,7 +12,6 @@ export function playerIsShowingAd(
   );
 }
 
-/** Extra caller context merged into the emitted transition detail. */
 export type TransitionContext = Record<string, unknown>;
 
 export interface AdStartDetail extends TransitionContext {

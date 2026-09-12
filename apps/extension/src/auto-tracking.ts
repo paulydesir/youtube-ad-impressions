@@ -1,8 +1,6 @@
 const YOUTUBE_TABS = "https://www.youtube.com/*";
 
-// Manifest content scripts handle normal navigation. Reattach to tabs that were
-// already open when the extension was installed/reloaded or the worker restarted.
-// content.ts is idempotent, so racing with manifest injection is harmless.
+// Reattach to tabs that predate an install, reload, or worker restart.
 export function registerAutomaticTracking(api = chrome) {
   async function attach(tabId: number) {
     try {

@@ -4,8 +4,6 @@ const isoDateTime = z.iso
   .datetime({ offset: true })
   .describe("UTC or offset ISO-8601 date-time.");
 
-// Narrow input schemas for the three read-only MCP tools. Limits are enforced
-// here (max 100) and again in the repository layer, which clamps and defaults.
 export const searchAdImpressionsInputSchema = z
   .object({
     advertiser: z
@@ -125,8 +123,6 @@ export type GetAdvertiserOverviewInput = {
   advertiser: string;
 };
 
-// Structured output schemas. Compact impression rows deliberately exclude
-// raw_json, avatar URLs, and player metadata — those never leave the database.
 const impressionSchema = z.object({
   eventId: z.string(),
   schemaVersion: z.number(),

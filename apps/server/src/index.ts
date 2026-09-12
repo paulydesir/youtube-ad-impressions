@@ -63,7 +63,6 @@ async function main(): Promise<void> {
     process.exit(1);
   });
 
-  // The PostgreSQL pool holds the event loop open, so close it before exiting.
   const shutdown = (signal: string) => {
     console.info(`Received ${signal}, closing database...`);
     void database

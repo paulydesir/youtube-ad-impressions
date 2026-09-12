@@ -1,5 +1,3 @@
-// Combines extracted metadata + tracker state into the final record.
-// Pure domain code: no DOM, no Chrome, no YouTube knowledge.
 import type { ImpressionEndDetail } from "../ad-state-machine.ts";
 import type { AdMetadata } from "./extract.ts";
 import type { IdentifiedAdImpressionRecord } from "../types.ts";
@@ -9,7 +7,6 @@ export interface StoredMetadata extends AdMetadata {
   skipClickedAt: string | null;
 }
 
-/** Build the storage/messaging record for one completed impression. */
 export function buildImpressionRecord(
   detail: ImpressionEndDetail,
   metadata: Partial<StoredMetadata>,
@@ -43,10 +40,6 @@ export function buildImpressionRecord(
   };
 }
 
-/**
- * Owns per-impression metadata captured at impression start, including
- * skip presses observed before the impression ends.
- */
 export class ImpressionMetadataStore {
   private readonly entries = new Map<number, StoredMetadata>();
 
@@ -62,7 +55,6 @@ export class ImpressionMetadataStore {
     return this.entries.get(impressionIndex);
   }
 
-  /** Snapshot for building the record; empty object when nothing was stored. */
   snapshot(impressionIndex: number): Partial<StoredMetadata> {
     return this.entries.get(impressionIndex) ?? {};
   }

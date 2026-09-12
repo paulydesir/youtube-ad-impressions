@@ -10,6 +10,7 @@
   ],
   "host_permissions": [
     "http://127.0.0.1:8787/*",
+    "https://youtube-ad-impressions.onrender.com/*",
     "http://127.0.0.1:54321/*",
     "https://www.youtube.com/*"
   ],

@@ -11,7 +11,6 @@ export type DatabaseKind = "postgres";
 export interface Database {
   kind: DatabaseKind;
   store: ImpressionStore;
-  // Human-readable backend description for startup logs (credentials redacted).
   label: string;
   isReady(): Promise<boolean>;
   close(): Promise<void>;
@@ -19,7 +18,6 @@ export interface Database {
 
 type DatabaseSelector = Pick<ServerConfig, "DATABASE_URL">;
 
-// Opens PostgreSQL. Callers use `store` and never touch the raw client.
 export async function openDatabase(config: DatabaseSelector): Promise<Database> {
   const client = await initializePostgresDatabase(config.DATABASE_URL);
   return {

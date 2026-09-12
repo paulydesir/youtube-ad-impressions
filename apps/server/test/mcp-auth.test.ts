@@ -1,4 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { parse } from "dotenv";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
@@ -42,6 +44,7 @@ beforeAll(async () => {
   });
 });
 afterAll(async () => { await new Promise<void>(resolve => jwksServer.close(() => resolve())); });
+beforeEach(() => { vi.clearAllMocks(); });
 
 describe("MCP OAuth resource server", () => {
   it("advertises the canonical resource and issuer without trusting Host headers", async () => {
@@ -53,11 +56,42 @@ describe("MCP OAuth resource server", () => {
     }
   });
 
+  it("points production discovery to the existing Supabase project", async () => {
+    const env = parse(readFileSync(new URL("../.env.production.example", import.meta.url)));
+    const production = createApp({ store, isDatabaseReady: async () => true,
+      mcpAuth: { resourceUrl: env.MCP_RESOURCE_URL!, supabaseUrl: env.SUPABASE_URL! },
+    });
+    const response = await request(production).get("/.well-known/oauth-protected-resource/mcp");
+    expect(response.status).toBe(200);
+    expect(response.body.resource).toBe("https://youtube-ad-impressions.onrender.com/mcp");
+    expect(response.body.authorization_servers).toEqual(["https://snyecvnutlrhyicvwzfh.supabase.co/auth/v1"]);
+    const unauthorized = await request(production).post("/mcp");
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers["www-authenticate"]).toBe(
+      'Bearer resource_metadata="https://youtube-ad-impressions.onrender.com/.well-known/oauth-protected-resource/mcp"',
+    );
+  });
+
+  it("allows browser preflight on both public metadata URLs", async () => {
+    for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
+      const response = await request(app).options(path)
+        .set("Origin", "https://client.example.com")
+        .set("Access-Control-Request-Method", "GET")
+        .set("Access-Control-Request-Headers", "mcp-protocol-version");
+      expect(response.status).toBe(204);
+      expect(response.headers["access-control-allow-origin"]).toBe("*");
+      expect(response.headers["access-control-allow-methods"]).toBe("GET, OPTIONS");
+      expect(response.headers["access-control-allow-headers"]).toContain("mcp-protocol-version");
+      expect(response.headers["www-authenticate"]).toBeUndefined();
+    }
+  });
+
   it("challenges missing and invalid credentials on every MCP HTTP method", async () => {
     for (const method of ["post", "get", "delete"] as const) {
       const response = await request(app)[method]("/mcp?access_token=old-shared-token");
       expect(response.status).toBe(401);
-      expect(response.headers["www-authenticate"]).toContain('resource_metadata="https://ads.example.com/.well-known/oauth-protected-resource/mcp"');
+      expect(response.body).toEqual({ error: "unauthorized" });
+      expect(response.headers["www-authenticate"]).toBe('Bearer resource_metadata="https://ads.example.com/.well-known/oauth-protected-resource/mcp"');
     }
     expect((await request(app).post("/mcp").set("Authorization", "Bearer old-shared-token").set("Content-Type", "application/json").send("{")).status).toBe(401);
     expect((await request(createApp({ store, isDatabaseReady: async () => true })).post("/mcp")).status).toBe(401);
@@ -73,13 +107,34 @@ describe("MCP OAuth resource server", () => {
       await token({ client_id: "" }), await token({ role: "service_role" }), await token({ is_anonymous: true }),
     ];
     for (const bearer of invalid) {
-      const response = await request(app).get("/mcp").set("Authorization", `Bearer ${bearer}`);
+      const response = await request(app).post("/mcp").set("Authorization", `Bearer ${bearer}`)
+        .send({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_ad_impressions", arguments: {} } });
       expect(response.status).toBe(401);
-      expect(response.headers["www-authenticate"]).toContain('error="invalid_token"');
+      expect(response.body).toEqual({ error: "unauthorized" });
+      expect(response.headers["www-authenticate"]).toBe('Bearer resource_metadata="https://ads.example.com/.well-known/oauth-protected-resource/mcp", error="invalid_token"');
     }
-    // Valid authentication reaches the stateless transport's 405 response.
     expect((await request(app).get("/mcp").set("Authorization", `bearer ${await token()}`)).status).toBe(405);
     expect(store.searchImpressions).not.toHaveBeenCalled();
+  });
+
+  it("initializes MCP and executes a tool as the verified token's user", async () => {
+    const bearer = await token();
+    const post = (body: object) => request(app).post("/mcp")
+      .set("Authorization", `Bearer ${bearer}`)
+      .set("Accept", "application/json, text/event-stream").send(body);
+    const initialized = await post({ jsonrpc: "2.0", id: 1, method: "initialize", params: {
+      protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "auth-test", version: "1.0" },
+    } });
+    expect(initialized.status).toBe(200);
+    expect(initialized.text).toContain('"serverInfo":{"name":"youtube-ad-impressions"');
+    expect(initialized.headers["www-authenticate"]).toBeUndefined();
+    vi.mocked(store.searchImpressions).mockResolvedValueOnce([]);
+    const result = await post({ jsonrpc: "2.0", id: 2, method: "tools/call",
+      params: { name: "search_ad_impressions", arguments: {} },
+    });
+    expect(result.status).toBe(200);
+    expect(result.text).toContain('"structuredContent":{"impressions":[]}');
+    expect(store.searchImpressions).toHaveBeenCalledExactlyOnceWith(userId, expect.any(Object));
   });
 
   it("serves consent assets with framing and referrer protection", async () => {

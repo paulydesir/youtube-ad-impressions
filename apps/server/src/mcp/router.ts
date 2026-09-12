@@ -12,9 +12,6 @@ function methodNotAllowed(res: Response): void {
   });
 }
 
-// Stateless Streamable HTTP transport at /mcp: one fresh McpServer per POST
-// request, no session tracking. GET/DELETE are rejected with 405 per the
-// stateless example in the MCP TypeScript SDK.
 export function createMcpRouter(store: ImpressionStore, log: (message: string) => void = console.info): Router {
   const router = Router();
 

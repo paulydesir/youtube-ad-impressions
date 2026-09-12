@@ -3,7 +3,7 @@ import type { AdImpressionV1 } from "@ad-impressions/contracts";
 import { and, count, desc, eq, gte, lte, max, min, or, sql, sum } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { PostgresDatabaseClient } from "../db/postgres/client.js";
-import { adImpressions } from "../db/postgres/schema.js";
+import { adImpressions, profiles } from "../db/postgres/schema.js";
 
 export type InsertStatus = "inserted" | "duplicate";
 
@@ -23,8 +23,6 @@ export interface AdvertiserStatsFilters {
   limit?: number;
 }
 
-// Compact row: raw_json and the local identity column never leave the
-// database. eventId is the portable identity.
 export type CompactImpression = Omit<
   typeof adImpressions.$inferSelect,
   "id" | "rawJson" | "userId" | "userId"
@@ -57,8 +55,6 @@ function clampLimit(limit: number | undefined, fallback: number): number {
   return Math.min(Math.max(Math.floor(limit), 1), MAX_LIMIT);
 }
 
-// Case-insensitive substring match without LIKE wildcards, so user input
-// never needs escaping.
 function contains(column: PgColumn, term: string) {
   return sql`strpos(lower(${column}), lower(${term})) > 0`;
 }
@@ -146,19 +142,21 @@ function toAdvertiserStatRow(row: {
   };
 }
 
-// Idempotent insert keyed on event_id. Returns "duplicate" instead of
-// throwing when the event was already stored.
 export async function insertImpression(
   db: PostgresDatabaseClient,
-  userId: string,
+  userIdParam: string,
   record: AdImpressionV1,
   rawJson: string,
   ingestedAt: string = new Date().toISOString(),
 ): Promise<{ status: InsertStatus; eventId: string }> {
+  const userId = requireUserId(userIdParam);
+  // Standalone Postgres (e.g. Render) has no Supabase auth.users trigger to
+  // create profiles rows. Upsert is a no-op where the trigger already ran.
+  await db.insert(profiles).values({ id: userId }).onConflictDoNothing();
   const rows = await db
     .insert(adImpressions)
     .values({
-      userId: requireUserId(userId),
+      userId,
       eventId: record.event_id,
       schemaVersion: record.schema_version,
       source: record.source,
@@ -266,8 +264,6 @@ export async function getAdvertiserOverviewData(
   userId: string,
   resolvedAdvertiser: string,
 ): Promise<AdvertiserOverviewData> {
-  // This operation intentionally uses one exact observed aggregation key. The
-  // service layer resolves user-facing substring queries before calling it.
   const condition = and(eq(adImpressions.userId, requireUserId(userId)), exactAdvertiserKeyCondition(resolvedAdvertiser));
   const [statsRow] = await db
     .select({

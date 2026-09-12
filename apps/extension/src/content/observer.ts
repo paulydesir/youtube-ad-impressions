@@ -1,8 +1,3 @@
-// Watches the YouTube DOM and turns player/advertiser mutations into
-// lifecycle callbacks. This is the only module (besides extract/selectors)
-// that touches YouTube markup, MutationObservers, or page navigation events.
-// Tests for this layer are integration-style; all interpretation logic lives
-// in `ad-state-machine.ts`, `extract.ts`, and `impression-builder.ts`.
 import {
   AdStateMachine,
   DomainImpressionTracker,
@@ -39,7 +34,6 @@ export interface YouTubeAdObserver {
   readonly active: boolean;
   readonly impressionIndex: number;
   getVideo(): HTMLVideoElement | null;
-  /** Re-run player discovery (also exposed for DevTools diagnostics). */
   refresh(): void;
   destroy(reason?: string): void;
 }

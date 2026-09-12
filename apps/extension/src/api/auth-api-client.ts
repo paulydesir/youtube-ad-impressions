@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { SERVER_BASE_URL } from "../config.ts";
 
-export function createAuthApiClient(client: SupabaseClient, baseUrl = "http://127.0.0.1:8787", fetcher: typeof fetch = fetch) {
+export function createAuthApiClient(client: SupabaseClient, baseUrl = SERVER_BASE_URL, fetcher: typeof fetch = fetch) {
   return {
     async getMe(): Promise<{ id: string; email: string }> {
       const { data, error } = await client.auth.getSession();

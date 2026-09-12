@@ -1,6 +1,3 @@
-// Accumulates non-ad video watch time and forwards it in batches.
-// Pure timing logic: the video element and ad state arrive via callbacks so
-// tests never need a player, a timer, or Chrome.
 export const WATCH_SAMPLE_CAP_MS = 2000;
 export const WATCH_FLUSH_THRESHOLD_MS = 10_000;
 

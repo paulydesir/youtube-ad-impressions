@@ -22,7 +22,7 @@ const { outputFiles } = await build({
     createRoot(document.getElementById("root")).render(<AuthProvider client={client}><App/></AuthProvider>);
   `, resolveDir: new URL("../popup/", import.meta.url).pathname, loader: "tsx" },
   jsx: "automatic", bundle: true, write: false, format: "iife", platform: "browser",
-  define: { "process.env.NODE_ENV": '"production"', __SUPABASE_URL__: '"http://127.0.0.1:54321"', __SUPABASE_PUBLISHABLE_KEY__: '"test-key"' },
+  define: { "process.env.NODE_ENV": '"production"', __SUPABASE_URL__: '"http://127.0.0.1:54321"', __SUPABASE_PUBLISHABLE_KEY__: '"test-key"', __SERVER_URL__: '"http://127.0.0.1:8787"' },
 });
 
 async function waitFor(check) {

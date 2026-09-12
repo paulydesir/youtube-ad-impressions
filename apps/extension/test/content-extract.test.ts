@@ -9,8 +9,6 @@ import {
 } from "../src/content/extract.ts";
 import { YOUTUBE_SELECTORS } from "../src/content/selectors.ts";
 
-// Minimal structural fakes: the extractor only calls querySelector,
-// textContent, getAttribute, closest, and contains — no real DOM needed.
 
 interface FakeElementOptions {
   textContent?: string | null;
@@ -101,7 +99,6 @@ test("extractAdMetadata snapshots every field from the player", () => {
     },
     { dataset: { version: "1.2.3" } },
   );
-  // Avatar/video fakes need media-specific props the generic fake lacks.
   const avatar = player.querySelector(
     YOUTUBE_SELECTORS.avatar,
   ) as unknown as Record<string, unknown>;

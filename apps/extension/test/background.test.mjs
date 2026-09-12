@@ -8,7 +8,7 @@ import { sampleImpression } from "./sample-impression.ts";
 const { outputFiles } = await build({
   entryPoints: [new URL("../src/background.ts", import.meta.url).pathname],
   bundle: true, write: false, format: "iife", platform: "browser",
-  define: { __SUPABASE_URL__: '"http://127.0.0.1:54321"', __SUPABASE_PUBLISHABLE_KEY__: '"test-key"' },
+  define: { __SUPABASE_URL__: '"http://127.0.0.1:54321"', __SUPABASE_PUBLISHABLE_KEY__: '"test-key"', __SERVER_URL__: '"http://127.0.0.1:8787"' },
 });
 
 test("cold worker without a popup or DOM restores session and POSTs a content-script message", async t => {
@@ -23,7 +23,6 @@ test("cold worker without a popup or DOM restores session and POSTs a content-sc
   const logs = [];
   let listener;
   const context = {
-    // Deliberately no window, document, localStorage, or popup runtime.
     crypto: webcrypto, WebSocket, performance, URL, Headers, Request, Response, AbortController, AbortSignal,
     TextEncoder, TextDecoder, atob, btoa,
     setTimeout: (fn, ms) => { const id = setTimeout(fn, ms); timers.add(id); return id; },
@@ -57,7 +56,6 @@ test("cold worker without a popup or DOM restores session and POSTs a content-sc
   assert.equal(requests.length, 1);
   assert.equal(requests[0].init.method, "POST");
   assert.equal(new Headers(requests[0].init.headers).get("Authorization"), "Bearer test-access-token");
-  // Logout in the popup clears shared storage while the worker remains alive.
   delete values["sb-127-auth-token"];
   assert.equal((await send()).ok, false);
   assert.equal(requests.length, 1);

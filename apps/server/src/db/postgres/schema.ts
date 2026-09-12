@@ -6,8 +6,6 @@ export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey(),
 });
 
-// Timestamps remain UTC ISO-8601 strings and booleans use the native
-// PostgreSQL boolean type.
 export const adImpressions = pgTable(
   "ad_impressions",
   {

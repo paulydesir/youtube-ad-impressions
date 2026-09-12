@@ -37,7 +37,6 @@ main {
   animation: rise .25s ease-out;
 }
 
-/* Hero */
 
 .hero { margin-bottom: 18px; }
 
@@ -84,7 +83,6 @@ h1 {
   text-align: center;
 }
 
-/* Metrics */
 
 .metrics {
   display: grid;
@@ -111,7 +109,6 @@ h1 {
 
 .metric-label { color: var(--muted); font-size: 11px; }
 
-/* Sections */
 
 section + section { margin-top: 22px; }
 
@@ -131,7 +128,6 @@ h2 {
   margin: 0;
 }
 
-/* Ranking */
 
 .ranking { list-style: none; margin: 0; padding: 0; }
 
@@ -176,7 +172,6 @@ h2 {
   white-space: nowrap;
 }
 
-/* Recent */
 
 .recent-item {
   display: grid;
@@ -245,7 +240,6 @@ h2 {
 .connection-actions button:disabled { opacity: .5; cursor: default; }
 .server-connection :is(input, button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Backup */
 
 .backup-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 

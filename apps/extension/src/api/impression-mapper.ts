@@ -39,9 +39,6 @@ function legacyPodId(eventId: string): string {
   return `legacy-pod:${eventId}`;
 }
 
-// Matches the server importer's normalization and deterministic identity so a
-// later backup import cannot duplicate an observation already forwarded live.
-// Pure mapping: no fetch, no storage, no Chrome access.
 export async function toAdImpressionV1(
   record: AdImpressionRecord,
 ): Promise<AdImpressionV1> {

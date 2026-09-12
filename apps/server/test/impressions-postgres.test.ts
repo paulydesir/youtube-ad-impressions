@@ -5,9 +5,6 @@ import { toAdImpressionV1 } from "@ad-impressions/contracts";
 import { openDatabase, type Database } from "../src/db/database.js";
 import type { ImpressionStore } from "../src/repositories/store.js";
 
-// Live-Postgres coverage for the store abstraction and the pg repository.
-// Runs only when DATABASE_URL is set (e.g. with the compose database up);
-// otherwise the integration suite is skipped.
 const describePostgres = describe.skipIf(process.env.DATABASE_URL === undefined);
 
 function impression(overrides: Record<string, unknown> = {}) {

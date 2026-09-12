@@ -9,8 +9,6 @@ const html = readFileSync(new URL("../public/consent.html", import.meta.url), "u
 const bundle = readFileSync(new URL("../public/consent.js", import.meta.url), "utf8");
 const user = { id: "9c3f24dd-50ab-4f8c-a389-a860dd3053ae", email: "owner@example.com" };
 const accessToken = ["eyJhbGciOiJIUzI1NiJ9", Buffer.from(JSON.stringify({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url"), "signature"].join(".");
-// JSDOM is deliberately a DOM test; full browser layout/Google sign-in still
-// needs the manual check documented in docs/mcp-oauth.md.
 let dom: ReturnType<typeof JSDOM>;
 afterEach(() => dom?.window.close());
 

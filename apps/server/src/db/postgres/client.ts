@@ -10,8 +10,6 @@ export type PostgresDatabaseClient = NodePgDatabase<typeof schema> & {
   $client: PgPool;
 };
 
-// Opens a pooled PostgreSQL connection from DATABASE_URL and applies pending
-// migrations from apps/server/migrations-pg.
 export async function initializePostgresDatabase(
   connectionString: string,
 ): Promise<PostgresDatabaseClient> {
@@ -29,7 +27,6 @@ export async function initializePostgresDatabase(
   return db;
 }
 
-// Runs the database readiness probe.
 export async function isPostgresDatabaseReady(
   db: PostgresDatabaseClient,
 ): Promise<boolean> {
@@ -41,7 +38,6 @@ export async function isPostgresDatabaseReady(
   }
 }
 
-// Closes the underlying pg Pool.
 export async function closePostgresDatabase(
   db: PostgresDatabaseClient,
 ): Promise<void> {

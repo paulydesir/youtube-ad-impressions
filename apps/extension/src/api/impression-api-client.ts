@@ -1,7 +1,8 @@
 import type { AdImpressionV1 } from "@ad-impressions/contracts";
+import { SERVER_BASE_URL } from "../config.ts";
 
 export const LOCAL_SERVER_ENDPOINT =
-  "http://127.0.0.1:8787/api/v1/impressions";
+  `${SERVER_BASE_URL}/api/v1/impressions`;
 export const FORWARD_TIMEOUT_MS = 2_000;
 
 type Fetch = typeof globalThis.fetch;
@@ -15,9 +16,6 @@ export interface ImpressionApiClientOptions {
   warn?: (message: string) => void;
 }
 
-// Best-effort HTTP delivery of an already-mapped record. Owns endpoint,
-// auth, timeout, and status handling; never touches persistence or mapping,
-// and never rejects — failures collapse to one concise diagnostic.
 export function createImpressionApiClient(
   options: ImpressionApiClientOptions,
 ): (canonical: AdImpressionV1) => Promise<void> {

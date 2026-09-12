@@ -24,7 +24,6 @@ export type {
   InsertStatus,
 };
 
-// Storage interface used by the service, HTTP, MCP, and import layers.
 export interface ImpressionStore {
   insertImpression(
     userId: string,

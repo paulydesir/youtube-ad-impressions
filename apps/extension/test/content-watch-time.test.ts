@@ -74,7 +74,6 @@ test("caps single samples after sleep and auto-flushes at threshold", () => {
   advance(60_000);
   tracker.sample();
 
-  // One capped sample, well under the flush threshold.
   assert.equal(tracker.pendingMs, 2000);
 
   for (let i = 0; i < 4; i += 1) {

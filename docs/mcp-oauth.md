@@ -11,6 +11,120 @@ points clients to that metadata. Supabase handles authorization codes, client
 registration, token issuance, consent grants, refresh rotation, and revocation.
 The app serves a sign-in and consent page at `/oauth/consent`.
 
+The Express adapter uses `resourceMetadataResponse`, `unauthorizedResponse`,
+and `fromSupabaseUrl` from the pinned `@supabase/server@1.6.0` package.
+`withOAuthProtectedResource` wraps Fetch handlers and serves a different
+metadata path; using its response helpers retains the existing well-known
+URLs, Express streaming transport, JWT verifier, and authenticated repository
+access. Both metadata routes support public GET and OPTIONS discovery.
+
+## Production URLs and curl checks
+
+Production uses the existing project `snyecvnutlrhyicvwzfh`. Set these variables
+in the Render service environment (also shown in `.env.production.example`):
+
+```dotenv
+SUPABASE_URL=https://snyecvnutlrhyicvwzfh.supabase.co
+MCP_RESOURCE_URL=https://youtube-ad-impressions.onrender.com/mcp
+```
+
+Keep the existing production publishable key and database connection.
+This change adds no migration and does not change extension/API authentication.
+
+**Observed on September 11, 2026:** production resource discovery returned 200,
+and missing/invalid MCP credentials returned the expected 401 challenges.
+Supabase initially returned `404 feature_disabled`; after OAuth Server was
+enabled, a repeat check returned `200` with the correct issuer, authorization,
+token, and registration endpoints, plus S256 PKCE support.
+In the [existing project's Auth settings](https://supabase.com/dashboard/project/snyecvnutlrhyicvwzfh/auth/oauth-server),
+use Site URL `https://youtube-ad-impressions.onrender.com` and authorization
+path `/oauth/consent`. Verify the existing audience hook and dedicated client
+mapping described below; these remain required by the existing JWT validator.
+Do not reapply the existing migration if it is already installed. Automatic
+dynamic registration alone is insufficient because clients must be mapped.
+No production settings were changed by this implementation.
+
+1. Fetch resource discovery (no credentials required):
+
+   ```sh
+   curl -i https://youtube-ad-impressions.onrender.com/.well-known/oauth-protected-resource/mcp
+   curl -i https://youtube-ad-impressions.onrender.com/.well-known/oauth-protected-resource
+   ```
+
+   Both return `200`, `Content-Type: application/json`,
+   `Access-Control-Allow-Origin: *`, and:
+
+   ```json
+   {
+     "resource": "https://youtube-ad-impressions.onrender.com/mcp",
+     "authorization_servers": ["https://snyecvnutlrhyicvwzfh.supabase.co/auth/v1"],
+     "bearer_methods_supported": ["header"],
+     "resource_name": "YouTube Ad Impressions"
+   }
+   ```
+
+2. Follow the issuer to Supabase authorization-server discovery:
+
+   ```sh
+   curl -i https://snyecvnutlrhyicvwzfh.supabase.co/.well-known/oauth-authorization-server/auth/v1
+   ```
+
+   After enabling OAuth Server, expect `200` JSON with
+   `issuer: https://snyecvnutlrhyicvwzfh.supabase.co/auth/v1`, authorization and
+   token endpoint URLs, and S256 PKCE support. A `404 feature_disabled` means
+   Supabase OAuth Server still needs enabling; clients cannot complete OAuth.
+
+3. Request MCP without a token:
+
+   ```sh
+   curl -i -X POST https://youtube-ad-impressions.onrender.com/mcp
+   ```
+
+   Expect `401`, body `{"error":"unauthorized"}`, and:
+
+   ```http
+   WWW-Authenticate: Bearer resource_metadata="https://youtube-ad-impressions.onrender.com/.well-known/oauth-protected-resource/mcp"
+   ```
+
+   Unauthenticated GET and DELETE return the same challenge.
+
+4. Initialize MCP using a valid **OAuth access token** obtained through the
+   registered client's authorization-code/PKCE flow. Set `MCP_ACCESS_TOKEN` in
+   your shell to that token; an extension session token will be rejected.
+   Its audience must include `https://youtube-ad-impressions.onrender.com/mcp`.
+
+   ```sh
+   curl -i -N https://youtube-ad-impressions.onrender.com/mcp \
+     -H "Authorization: Bearer ${MCP_ACCESS_TOKEN}" \
+     -H 'Content-Type: application/json' \
+     -H 'Accept: application/json, text/event-stream' \
+     --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl-check","version":"1.0"}}}'
+   ```
+
+   Expect `200`, a `text/event-stream` response containing a JSON-RPC result
+   with `serverInfo.name: youtube-ad-impressions`, and no `WWW-Authenticate`.
+   The transport is stateless; no session ID is needed. Authenticated GET or
+   DELETE returns `405`, so use POST initialization to check success.
+
+5. Check invalid and expired tokens:
+
+   ```sh
+   curl -i -X POST https://youtube-ad-impressions.onrender.com/mcp \
+     -H 'Authorization: Bearer invalid-token'
+   # Set MCP_EXPIRED_ACCESS_TOKEN to a previously issued, now-expired OAuth token.
+   curl -i -X POST https://youtube-ad-impressions.onrender.com/mcp \
+     -H "Authorization: Bearer ${MCP_EXPIRED_ACCESS_TOKEN}"
+   ```
+
+   Both return `401`, body `{"error":"unauthorized"}`, and:
+
+   ```http
+   WWW-Authenticate: Bearer resource_metadata="https://youtube-ad-impressions.onrender.com/.well-known/oauth-protected-resource/mcp", error="invalid_token"
+   ```
+
+Authenticated and expired-token production checks require real OAuth tokens;
+they were verified locally with signed test JWTs, not against production.
+
 ## Configure Supabase and the server
 
 1. Apply `supabase/migrations/20260908160000_mcp_oauth_audience.sql` to the
@@ -82,6 +196,24 @@ its own impressions. All three tools share the same read permission; custom
 per-tool OAuth scopes are not implemented.
 
 ## Verify and revoke
+
+### ChatGPT: authentication succeeded, action discovery failed (401)
+
+This means OAuth completed but the MCP request was rejected. Check the
+dedicated client's audience mapping and that **Authentication → Hooks →
+Custom Access Token** enables `public.mcp_oauth_access_token_hook`.
+Dynamic registration creates an Auth client, but does not populate
+`private.mcp_oauth_clients`. Map the exact client used by the connection using
+the SQL above; do not allow all dynamically registered clients automatically.
+Then reauthorize the existing ChatGPT connection to obtain a fresh token.
+Deleting and recreating the connection can register a different client ID,
+which needs its own mapping. Tokens already issued keep their old audience.
+
+On September 11, 2026, the production mapping table was empty after ChatGPT's
+first connection. Its registered client was mapped to the production MCP URL,
+and direct hook execution verified the MCP audience while preserving the
+ordinary extension audience. Hook activation in Auth settings and a fresh
+ChatGPT login must still be verified end to end.
 
 ```sh
 npm run dev

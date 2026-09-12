@@ -1,5 +1,3 @@
-// Chrome message routing for the service worker. Delegates to the injected
-// stores. Testable with in-memory fakes — no service worker required.
 import { aggregateImpressions } from "./analytics.ts";
 import type { ImpressionAnalytics } from "./analytics.ts";
 import type { ImpressionStore } from "./storage/impression-store.ts";

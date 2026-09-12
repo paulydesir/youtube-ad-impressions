@@ -1,5 +1,3 @@
-// Pure aggregation over stored impressions for the popup dashboard.
-
 export interface ImpressionInput {
   advertiser_name?: string | null;
   advertiser_url?: string | null;

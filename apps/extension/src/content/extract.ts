@@ -1,6 +1,3 @@
-// Reads raw values from YouTube DOM elements.
-// This is the only layer (besides selectors/observer) that knows about
-// YouTube markup. Everything downstream receives plain `AdMetadata`.
 import {
   normalizeText,
   parsePodPosition,
@@ -27,19 +24,15 @@ export interface AdMetadata {
   playerVersion: string | null;
 }
 
-/** Minimal DOM surface the extractor needs (real Elements satisfy this). */
 export interface QueryRoot {
   querySelector(selector: string): Element | null;
 }
 
-/** Read user-visible text, falling back to aria-label like the legacy code. */
 export function extractText(
   player: QueryRoot | null | undefined,
   selector: string,
 ): string | null {
   const element = player?.querySelector(selector);
-  // Legacy semantics preserved exactly: trimmed textContent, else the raw
-  // aria-label attribute, else null (empty strings fall through).
   return (
     element?.textContent?.trim() || element?.getAttribute("aria-label") || null
   );
@@ -52,7 +45,6 @@ export function extractAdvertiserDomain(
   return normalizeText(element?.textContent);
 }
 
-/** Snapshot every ad field from the player at this instant. */
 export function extractAdMetadata(
   player: (QueryRoot & Element) | null | undefined,
 ): AdMetadata {
@@ -87,7 +79,6 @@ export function extractAdMetadata(
   };
 }
 
-/** Pure host-video lookup so tests never need `location`. */
 export function hostVideoIdFromHref(href: string): string | null {
   try {
     return new URL(href).searchParams.get("v");
@@ -96,18 +87,11 @@ export function hostVideoIdFromHref(href: string): string | null {
   }
 }
 
-/** Content-script lookup for the currently watched video. */
 export function hostVideoId(): string | null {
   return hostVideoIdFromHref(location.href);
 }
 
-/**
- * True when a captured click is a press on the player's skip button.
- * Mirrors the legacy `recordSkip` guard exactly. The target check is
- * structural (rather than `instanceof Element`) so it also works across
- * realms and in non-DOM test runtimes; in browsers only Elements expose
- * `closest`, so the outcome is identical.
- */
+// Structural checks work across page and extension DOM realms.
 export function isSkipButtonClick(
   event: Event,
   player: { contains(node: Node | null): boolean } | null | undefined,

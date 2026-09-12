@@ -5,10 +5,6 @@ import type {
   ImpressionStore,
 } from "../repositories/store.js";
 
-// Compact observation DTO. The store holds no avatar or player-metadata
-// columns (those live only in raw_json), and raw_json never leaves the
-// database, so the repository's compact row is already the DTO shape —
-// restated here so the service owns its response contract.
 export type ImpressionDto = CompactImpression;
 
 export interface AdvertiserStatsDto {
@@ -46,8 +42,6 @@ function toStatsDto(row: {
   };
 }
 
-// Individual observations: headlines, promotions, timing, skip behavior.
-// Newest first; limits are clamped by the repository (default 20, max 100).
 export async function searchImpressions(
   store: ImpressionStore,
   userId: string,
@@ -56,7 +50,6 @@ export async function searchImpressions(
   return store.searchImpressions(userId, filters);
 }
 
-// Advertiser rankings and rates: frequency, total watch time, skip rate.
 export async function getAdvertiserStats(
   store: ImpressionStore,
   userId: string,
@@ -65,9 +58,6 @@ export async function getAdvertiserStats(
   return (await store.getAdvertiserStats(userId, filters)).map(toStatsDto);
 }
 
-// Resolves one observed advertiser key before returning any data. Exact keys
-// win, unique substring matches resolve automatically, and broad matches are
-// returned as candidates instead of being silently combined.
 export async function getAdvertiserOverview(
   store: ImpressionStore,
   userId: string,

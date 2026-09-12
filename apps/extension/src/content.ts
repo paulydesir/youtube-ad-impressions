@@ -1,11 +1,3 @@
-// Isolated-world content script: watches `#movie_player` class transitions and
-// the advertiser overlay, then forwards completed impressions to the worker.
-// Bundled to a single IIFE (see scripts/build.mjs) — no runtime imports remain.
-//
-// This file is orchestration only. YouTube DOM knowledge lives in
-// `content/observer.ts` + `content/extract.ts` + `content/selectors.ts`,
-// record mapping in `content/impression-builder.ts`, messaging in
-// `content/transport.ts`, and watch-time batching in `content/watch-time.ts`.
 import { hostVideoId } from "./content/extract.ts";
 import {
   buildImpressionRecord,
@@ -24,7 +16,6 @@ interface WatcherDiagnostic {
 }
 
 declare global {
-  // Inspectable from DevTools (content-script context) for status checks.
   var __youtubeAdImpressionWatcher: WatcherDiagnostic | undefined;
 }
 
@@ -51,7 +42,6 @@ const diagnostic: WatcherDiagnostic = {
   active: false,
 };
 
-// Install this before initialization so startup failures remain inspectable.
 globalThis.__youtubeAdImpressionWatcher = diagnostic;
 
 const impressionMetadata = new ImpressionMetadataStore();
@@ -107,8 +97,6 @@ Object.defineProperty(diagnostic, "active", {
   get: () => observer.active,
 });
 
-// This marker is visible from the normal page context as well as the isolated
-// content-script context, making installation checks unambiguous.
 document.documentElement.dataset["youtubeAdImpressionWatcher"] = "ready";
 console.info("[YouTube Ad Impressions] watcher ready");
 

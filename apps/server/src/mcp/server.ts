@@ -24,10 +24,6 @@ const READ_ONLY_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
-// Builds a server with exactly three read-only tools over observed local ad
-// data. Handlers call the structured query services only: no web search, no
-// SQL, no writes. Limits are enforced by the Zod input schemas (max 100) and
-// again by the repository layer.
 export function createMcpServer(store: ImpressionStore, userId: string, log: (message: string) => void = console.info): McpServer {
   requireUserId(userId);
   async function result(name: string, query: () => Promise<Record<string, unknown>>) {

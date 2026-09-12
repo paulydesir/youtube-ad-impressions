@@ -1,7 +1,4 @@
 import { registerAutomaticTracking } from "./auto-tracking.ts";
-// Service worker (ESM, see manifest `"type": "module"`): bootstrap only.
-// Constructs the stores, API client, and message handler, then registers the
-// Chrome listener. All behavior lives in the wired dependencies.
 import { LOCAL_SERVER_ENDPOINT } from "./api/impression-api-client.ts";
 import { createMessageHandler } from "./message-handler.ts";
 import { createServerImpressionStore } from "./storage/impression-store.ts";
@@ -10,7 +7,6 @@ import { isExtensionMessage } from "./types.ts";
 
 import { getAccessToken } from "./auth/supabase.ts";
 
-// Prevent content scripts from reading refresh tokens. Remove obsolete setup.
 void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
 void chrome.storage.local.remove("localServerIngestToken");
 

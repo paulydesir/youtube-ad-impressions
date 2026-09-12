@@ -1,6 +1,5 @@
 const WATCH_TIME_KEY = "youtubeWatchTimeMs";
 
-// Operations the application needs on the watch-time stats row.
 export interface WatchTimeStore {
   addWatchTime(milliseconds: number): Promise<void>;
   getWatchTime(): Promise<number>;

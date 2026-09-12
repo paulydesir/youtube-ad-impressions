@@ -1,8 +1,5 @@
 import { z } from "zod";
 
-// Canonical input contract for one completed ad impression.
-// This is the wire shape the extension sends and the server ingests.
-// Timestamps are UTC ISO-8601 strings; durations are milliseconds.
 export const adImpressionV1Schema = z.object({
   schema_version: z.literal(1),
   event_id: z.string().min(1),
@@ -25,8 +22,6 @@ export const adImpressionV1Schema = z.object({
   skipped: z.boolean(),
   skip_clicked_at: z.iso.datetime({ offset: true }).nullable(),
   end_reason: z.string().nullable(),
-  // Extra fields the extension already captures. Accepted here so nothing
-  // is rejected; they are preserved verbatim in `raw_json`, not columns.
   advertiser_url: z.string().nullable().optional(),
   skip_available: z.boolean().nullable().optional(),
   muted: z.boolean().nullable().optional(),
@@ -37,9 +32,6 @@ export const adImpressionV1Schema = z.object({
 
 export type AdImpressionV1 = z.infer<typeof adImpressionV1Schema>;
 
-// Validates one record and preserves the original input verbatim so unknown
-// or future fields are never lost — the server stores it as `raw_json`.
-// Throws a ZodError on invalid input.
 export function toAdImpressionV1(input: unknown): {
   record: AdImpressionV1;
   rawJson: string;

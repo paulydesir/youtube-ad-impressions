@@ -25,7 +25,6 @@ export function createImpressionsRouter(
   const router = Router();
   router.use(requireSupabaseAuth(verifyAccessToken));
 
-  // The extension dashboard reads its authoritative history from the server.
   router.get("/", async (req: Request, res: Response) => {
     const requested = Number(req.query.limit ?? 100);
     const limit = Number.isFinite(requested) ? requested : 100;
@@ -33,8 +32,6 @@ export function createImpressionsRouter(
     res.json({ records });
   });
 
-  // Single impression. 201 for a new record, 200 with duplicate:true when the
-  // event_id was already stored, 400 for an invalid record.
   router.post("/", async (req: Request, res: Response) => {
     let record;
     let rawJson;
@@ -48,7 +45,6 @@ export function createImpressionsRouter(
       return;
     }
     const { status, eventId } = await store.insertImpression((req as AuthenticatedRequest).auth!.userId, record, rawJson);
-    // DB write confirmation: status + portable identity only, never the body.
     log(`[ingest] ${status} event_id=${eventId}`);
     if (status === "duplicate") {
       res.status(200).json({ event_id: eventId, duplicate: true });
@@ -57,8 +53,6 @@ export function createImpressionsRouter(
     res.status(201).json({ event_id: eventId, duplicate: false });
   });
 
-  // Backfill/retries. Every item is handled idempotently; invalid items are
-  // counted as rejected without aborting the batch.
   router.post("/batch", async (req: Request, res: Response) => {
     if (!Array.isArray(req.body)) {
       res.status(400).json({ error: "invalid_batch", message: "Batch body must be an array." });

@@ -10,7 +10,6 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "../src/db/postgres/schema.js";
 import { createPostgresStore } from "../src/repositories/store.js";
 
-// jsdom belongs to the extension workspace; this test exercises its actual popup.
 const require = createRequire(new URL("../../extension/package.json", import.meta.url));
 const { JSDOM } = require("jsdom");
 const { build } = require("esbuild");
@@ -69,14 +68,13 @@ it.skipIf(process.env.AUTH_INTEGRATION !== "1")("local popup signup, profile tri
     mount(); await wait(() => text().includes("Create an account"));
     await click("Check /me"); await wait(() => text().includes("401"));
     await click("Create an account");
-    submit("x"); await wait(() => !!panel().querySelector('[role="alert"]')); // Supabase signup rejection
+    submit("x"); await wait(() => !!panel().querySelector('[role="alert"]'));
     submit(); await wait(() => text().includes("Account created."));
     const rows = await db.query("select u.id, u.email, p.id as profile_id, p.name from auth.users u join public.profiles p on p.id = u.id where u.email = $1", [email]);
     expect(rows.rows).toHaveLength(1); userId = rows.rows[0].id;
     expect(rows.rows[0]).toMatchObject({ profile_id: userId, name: "Auth Test", email });
     await click("Check /me"); await wait(() => text().includes(`(${userId})`));
     expect(requests.at(-1)).toMatch(/^Bearer ey/);
-    // Run the actual background bundle in a separate context sharing Chrome storage.
     const workerBundle = await build({ entryPoints: [new URL("../../extension/src/background.ts", import.meta.url).pathname], bundle: true, write: false, format: "iife", platform: "browser", define: { __SUPABASE_URL__: JSON.stringify(status.API_URL), __SUPABASE_PUBLISHABLE_KEY__: JSON.stringify(status.ANON_KEY) } });
     worker = new JSDOM("", { runScripts: "outside-only", url: "https://extension.test" });
     worker.window.console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(" "));
@@ -113,7 +111,6 @@ it.skipIf(process.env.AUTH_INTEGRATION !== "1")("local popup signup, profile tri
     submit("incorrect-password"); await wait(() => text().includes("Invalid login credentials"));
     submit(); await wait(() => text().includes("Signed in."));
     await click("Check /me"); await wait(() => text().includes(`(${userId})`));
-    // A correctly signed but expired token must fail against real local Auth.
     const h = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
     const p = Buffer.from(JSON.stringify({ sub: userId, email, aud: "authenticated", role: "authenticated", iss: `${status.API_URL}/auth/v1`, exp: 1 })).toString("base64url");
     const expired = `${h}.${p}.${createHmac("sha256", status.JWT_SECRET).update(`${h}.${p}`).digest("base64url")}`;

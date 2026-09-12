@@ -15,8 +15,6 @@ import { createMcpTokenVerifier } from "../src/mcp/auth.js";
 import { createTokenVerifier } from "../src/http/supabase-auth.js";
 import type { ImpressionStore } from "../src/repositories/store.js";
 
-// Run against an explicitly selected local Supabase stack with the MCP hook
-// migration applied. Creates and cleans up its own account/client/mapping.
 it.skipIf(process.env.MCP_OAUTH_INTEGRATION !== "1")("real Supabase OAuth: discovery, consent, S256 PKCE, replay protection, refresh and user-scoped MCP", async () => {
   const workdir = process.env.MCP_OAUTH_SUPABASE_WORKDIR ?? new URL("../../../", import.meta.url).pathname;
   const config = JSON.parse(execFileSync("npx", ["supabase", "status", "--workdir", workdir, "-o", "json"], { encoding: "utf8" }));
@@ -117,12 +115,10 @@ it.skipIf(process.env.MCP_OAUTH_INTEGRATION !== "1")("real Supabase OAuth: disco
     expect(fresh.refresh_token).not.toBe(tokens!.refresh_token);
     expect((await verifyMcp(fresh.access_token)).userId).toBe(userId);
 
-    // Removing the mapping makes subsequent refreshes unusable at this MCP.
     await pool.query("delete from private.mcp_oauth_clients where client_id=$1", [clientId]);
     const unmapped = await (await exchange({ grant_type: "refresh_token", refresh_token: fresh.refresh_token! })).json() as OAuthTokens;
     await expect(verifyMcp(unmapped.access_token)).rejects.toThrow();
 
-    // A second authorization code cannot be redeemed without its verifier.
     tokens = undefined;
     expect(await auth(provider, { serverUrl: resourceUrl })).toBe("REDIRECT");
     const second = await fetch(authorizationUrl!, { redirect: "manual" });
@@ -135,7 +131,6 @@ it.skipIf(process.env.MCP_OAUTH_INTEGRATION !== "1")("real Supabase OAuth: disco
     const secondCode = new URL(redirect.redirect_url).searchParams.get("code")!;
     expect((await exchange({ grant_type: "authorization_code", code: secondCode, code_verifier: "x".repeat(64), redirect_uri: String(provider.redirectUrl) })).status).toBe(400);
 
-    // Consent denial returns an error and the original state, never a code.
     expect((await user.auth.oauth.revokeGrant({ clientId: clientId! })).error).toBeNull();
     expect(await auth(provider, { serverUrl: resourceUrl })).toBe("REDIRECT");
     const deniedRequest = await fetch(authorizationUrl!, { redirect: "manual" });

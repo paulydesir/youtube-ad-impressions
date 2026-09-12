@@ -16,13 +16,10 @@ import { requireSupabaseAuth, type VerifyAccessToken, type AuthenticatedRequest 
 export interface AppOptions {
   verifyAccessToken?: VerifyAccessToken;
   store: ImpressionStore;
-  // Backend readiness probe. Async because PostgreSQL checks require I/O.
   isDatabaseReady: () => Promise<boolean>;
   mcpAuth?: McpAuthOptions;
   consent?: ConsentOptions;
   requestLog?: (message: string) => void;
-  // Operational trace log (ingest outcomes, MCP tool calls). Defaults to
-  // console.info; never receives request bodies or tokens.
   log?: (message: string) => void;
 }
 
@@ -62,8 +59,7 @@ export function createApp(options: AppOptions): Express {
       next();
     });
   }
-  // Authenticate MCP before parsing potentially large request bodies. The
-  // ingestion API retains its route-specific bearer check below.
+  // Authenticate MCP before parsing potentially large bodies.
   if (options.mcpAuth) app.use(createMcpMetadataRouter(options.mcpAuth));
   if (options.consent) app.use("/oauth", createConsentRouter(options.consent));
   app.use("/mcp", requireMcpAuth(options.mcpAuth));

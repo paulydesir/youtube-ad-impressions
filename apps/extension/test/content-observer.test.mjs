@@ -15,10 +15,9 @@ test("continuous player mutations do not prevent a completed impression reaching
   dom.window.chrome = { runtime: { id: "test-extension", sendMessage: (message, callback) => { messages.push(message); callback?.({ ok: true, id: message.record?.event_id }); } } };
   dom.window.console.info = () => {};
   dom.window.eval(outputFiles[0].text);
-  dom.window.eval(outputFiles[0].text); // Recovery must not duplicate capture.
+  dom.window.eval(outputFiles[0].text);
   const player = dom.window.document.querySelector('#movie_player');
   player.classList.add('ad-showing');
-  // Frequent countdown/overlay updates keep the old trailing debounce pending.
   for (let i = 0; i < 12; i++) {
     dom.window.document.querySelector('#timer').textContent = String(i);
     await new Promise(resolve => setTimeout(resolve, 40));

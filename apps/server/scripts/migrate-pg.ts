@@ -10,8 +10,6 @@ import {
   initializePostgresDatabase,
 } from "../src/db/postgres/client.js";
 
-// Migration-only entry point for PostgreSQL: applies pending migrations from
-// migrations-pg and exits without requiring ingestion tokens.
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
   console.error("DATABASE_URL must be set to run Postgres migrations.");

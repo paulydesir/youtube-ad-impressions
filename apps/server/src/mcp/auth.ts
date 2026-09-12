@@ -1,4 +1,5 @@
 import { Router, type RequestHandler } from "express";
+import { fromSupabaseUrl, resourceMetadataResponse, unauthorizedResponse } from "@supabase/server/oauth-protected-resource";
 import { createTokenVerifier, requireSupabaseAuth, type VerifyAccessToken } from "../http/supabase-auth.js";
 import { requireUserId } from "../repositories/tenant.js";
 
@@ -30,13 +31,27 @@ export function mcpMetadataPath(resourceUrl: string): string {
 export function createMcpMetadataRouter(options: McpAuthOptions): Router {
   const router = Router();
   const resource = new URL(options.resourceUrl);
-  router.get([mcpMetadataPath(options.resourceUrl), "/.well-known/oauth-protected-resource"], (_req, res) => {
-    res.set("Access-Control-Allow-Origin", "*").json({
+  const paths = [mcpMetadataPath(options.resourceUrl), "/.well-known/oauth-protected-resource"];
+  // The package's Fetch middleware uses a different metadata path. Compose
+  // its response primitives with Express to retain our RFC 9728 well-known URLs
+  // and existing JWT gate, without adapting the streaming MCP transport.
+  router.get(paths, async (_req, res) => {
+    const response = resourceMetadataResponse(new Request(resource), {
       resource: resource.href,
-      authorization_servers: [`${options.supabaseUrl.replace(/\/$/, "")}/auth/v1`],
-      bearer_methods_supported: ["header"],
+      authorizationServers: [fromSupabaseUrl(options.supabaseUrl)],
+    });
+    response.headers.forEach((value, name) => res.set(name, value));
+    res.status(response.status).json({
+      ...await response.json() as Record<string, unknown>,
       resource_name: "YouTube Ad Impressions",
     });
+  });
+  router.options(paths, (_req, res) => {
+    res.set({
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "content-type, mcp-protocol-version",
+    }).status(204).end();
   });
   return router;
 }
@@ -44,10 +59,11 @@ export function createMcpMetadataRouter(options: McpAuthOptions): Router {
 export function requireMcpAuth(options?: McpAuthOptions): RequestHandler {
   const metadataUrl = options
     ? new URL(mcpMetadataPath(options.resourceUrl), options.resourceUrl).href : undefined;
+  const challenge = options && metadataUrl
+    ? unauthorizedResponse(new Request(options.resourceUrl), { resourceMetadataUrl: metadataUrl })
+      .headers.get("WWW-Authenticate")!
+    : "Bearer";
   return requireSupabaseAuth(options?.verifyAccessToken, hasToken => {
-    const parameters = [];
-    if (metadataUrl) parameters.push(`resource_metadata="${metadataUrl}"`);
-    if (hasToken) parameters.push('error="invalid_token"');
-    return `Bearer${parameters.length ? ` ${parameters.join(", ")}` : ""}`;
+    return hasToken ? `${challenge}${metadataUrl ? "," : ""} error="invalid_token"` : challenge;
   });
 }

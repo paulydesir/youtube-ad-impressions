@@ -1,6 +1,3 @@
-// Sends completed impressions to the background service worker and emits
-// page-context diagnostics. Knows about extension messaging; knows nothing
-// about YouTube markup.
 import type {
   ExtensionMessage,
   IdentifiedAdImpressionRecord,
@@ -32,7 +29,6 @@ export interface ContentTransport {
     message: ExtensionMessage,
     onResponse?: (response: unknown) => void,
   ): void;
-  /** Emit a page-context CustomEvent plus a console line, like legacy code. */
   publish(type: string, detail: Record<string, unknown>): void;
   sendRecordImpression(record: IdentifiedAdImpressionRecord): void;
   sendWatchTime(milliseconds: number): void;

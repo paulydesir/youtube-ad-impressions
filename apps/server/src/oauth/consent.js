@@ -33,7 +33,6 @@ async function main() {
   async function showConsent() {
     const { data: { session }, error } = await supabase.auth.getSession();
     if (error) throw error;
-    // Remove the Google callback code from the address bar after SDK exchange.
     history.replaceState(null, "", `/oauth/consent?authorization_id=${encodeURIComponent(authorizationId)}`);
     element("login").hidden = !!session;
     element("consent").hidden = true;

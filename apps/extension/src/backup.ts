@@ -1,22 +1,9 @@
-// Versioned JSON backup format for export/import ("Backup & restore").
-// Legacy JSON-backup parser retained for importing old browser exports into the server.
-// bundled into both the service worker and the popup.
-//
-// File shape (matches youtube-ad-impressions-YYYY-MM-DD.json):
-// {
-//   "formatVersion": 1,
-//   "exportedAt": "2026-09-03T14:57:35.590Z",
-//   "database": "AdTrackerDB",
-//   "impressions": [ { ...AdImpressionRecord }, ... ],
-//   "stats": [ { "key": "watch_time_ms", "value": 37453103 } ]
-// }
 import type { AdImpressionRecord } from "./types.ts";
 
 export const BACKUP_FORMAT_VERSION = 1;
 export const BACKUP_DATABASE_NAME = "AdTrackerDB";
 export const WATCH_TIME_KEY = "watch_time_ms";
 
-/** A stored row; id is accepted from legacy backups but omitted from new ones. */
 export type StoredImpression = AdImpressionRecord & { id?: number };
 
 export interface BackupStatRow {
@@ -50,7 +37,6 @@ function isBooleanOrNull(value: unknown): value is boolean | null {
   return typeof value === "boolean" || value === null;
 }
 
-/** Strict-enough check that an unknown object is a restorable impression. */
 export function isStoredImpression(value: unknown): value is StoredImpression {
   if (!isRecord(value)) return false;
   return (
@@ -86,7 +72,6 @@ export type ParseBackupResult =
   | { ok: true; file: BackupFile }
   | { ok: false; error: string };
 
-/** Validates unknown parsed JSON into a BackupFile. Never throws. */
 export function parseBackupFile(data: unknown): ParseBackupResult {
   if (!isRecord(data)) return { ok: false, error: "Backup file must be a JSON object." };
   if (data["formatVersion"] !== BACKUP_FORMAT_VERSION) {
@@ -149,7 +134,6 @@ export function backupWatchTimeMs(file: BackupFile): number {
   return file.stats.find((stat) => stat.key === WATCH_TIME_KEY)?.value ?? 0;
 }
 
-/** Stable identity for merge-mode dedupe across re-imports of one export. */
 export function dedupeKey(record: StoredImpression): string {
   if (record.event_id) return `event:${record.event_id}`;
   return [

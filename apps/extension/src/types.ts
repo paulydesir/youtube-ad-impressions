@@ -1,10 +1,6 @@
-// Shared shapes crossing the content-script → service-worker → popup boundary.
-// Field names match the capture model used across extension messages.
 
 export interface AdImpressionRecord {
-  /** Present on all newly captured rows; absent only on legacy backups/rows. */
   event_id?: string;
-  /** Shared by impressions observed within one ad break; absent on legacy rows. */
   pod_id?: string;
   advertiser_name: string | null;
   advertiser_url: string | null;
