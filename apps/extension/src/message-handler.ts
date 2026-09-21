@@ -44,21 +44,11 @@ function handleMessage(
   const { impressionStore, watchTimeStore } = deps;
 
   if (message.type === "record-impression") {
-    console.info(`[YouTube Ad Impressions] beginning server write`, {
-      eventId: message.record.event_id,
-    });
     impressionStore.addImpression(message.record)
       .then((id) => {
-        console.info(
-          `[YouTube Ad Impressions] stored impression ${message.record.event_id} on server`,
-        );
         sendResponse({ ok: true, id });
       })
       .catch((error: unknown) => {
-        console.error(`[YouTube Ad Impressions] server write failed`, {
-          eventId: message.record.event_id,
-          error: toErrorMessage(error),
-        });
         sendResponse({ ok: false, error: toErrorMessage(error) });
       });
     return true;

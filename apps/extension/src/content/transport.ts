@@ -116,24 +116,14 @@ export function createContentTransport(
     };
 
     document.dispatchEvent(new CustomEvent(eventName, { detail: payload }));
-    info("[YouTube Ad Impressions]", payload);
   }
 
   function sendRecordImpression(record: IdentifiedAdImpressionRecord): void {
-    info("[YouTube Ad Impressions] sending impression to service worker", {
-      eventId: record.event_id,
-      advertiser: record.advertiser_name ?? record.advertiser_url,
-    });
     const message: ExtensionMessage = { type: "record-impression", record };
     sendExtensionMessage(message, (value) => {
       const response = value as { ok?: boolean; id?: string; error?: string } | undefined;
       if (!response?.ok) {
-        error("[YouTube Ad Impressions] failed to save impression", response);
-      } else {
-        info("[YouTube Ad Impressions] service worker confirmed impression", {
-          eventId: record.event_id,
-          storedId: response.id,
-        });
+        error(`[YouTube Ad Impressions] failed to save impression ${record.event_id}: ${response?.error ?? "No response from service worker"}`);
       }
     });
   }

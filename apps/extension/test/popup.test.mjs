@@ -71,3 +71,15 @@ test("dashboard offers refresh without a shared-token form", async t => {
   assert.equal(window.document.querySelector("#server-token"), null);
   assert.equal(window.document.querySelector("main > button").textContent, "Refresh history");
 });
+
+test("dashboard refresh updates totals beyond 100 and keeps recent history limited", async t => {
+  let count = 115;
+  const window = mount(t, (_message, callback) => callback(dashboard(
+    Array.from({ length: count }, (_, index) => sampleImpression({ event_id: `event-${index}` })),
+  )));
+  await waitFor(() => window.document.querySelector("#total-impressions")?.textContent === "115");
+  count = 117;
+  window.document.querySelector("main > button").click();
+  await waitFor(() => window.document.querySelector("#total-impressions")?.textContent === "117");
+  assert.equal(window.document.querySelectorAll("#recent .recent-item").length, 10);
+});

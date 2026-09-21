@@ -22,6 +22,8 @@ test("cold worker without a popup or DOM restores session and POSTs a content-sc
   const timers = new Set();
   const logs = [];
   let listener;
+  let adRequestListener;
+  let adRequestFilter;
   const context = {
     crypto: webcrypto, WebSocket, performance, URL, Headers, Request, Response, AbortController, AbortSignal,
     TextEncoder, TextDecoder, atob, btoa,
@@ -43,11 +45,25 @@ test("cold worker without a popup or DOM restores session and POSTs a content-sc
         setAccessLevel: async () => {},
       } },
       runtime: { onMessage: { addListener: fn => { listener = fn; } } },
+      webRequest: { onBeforeRequest: { addListener: (fn, filter) => {
+        adRequestListener = fn;
+        adRequestFilter = filter;
+      } } },
     },
   };
   t.after(() => { for (const timer of timers) { clearInterval(timer); clearTimeout(timer); } });
   runInNewContext(outputFiles[0].text, context);
   assert.equal(typeof listener, "function", "listener is registered synchronously on worker startup");
+  assert.equal(typeof adRequestListener, "function", "ad request listener is registered on worker startup");
+  assert.equal(adRequestFilter.urls.length, 1);
+  assert.equal(adRequestFilter.urls[0], "https://www.youtube.com/api/stats/ads*");
+  const beforeTelemetry = logs.length;
+  adRequestListener({ url: "https://www.youtube.com/api/stats/ads?content_v=B3eciVIAwPs" });
+  adRequestListener({ url: "https://www.youtube.com/api/stats/ads?ad_v=" });
+  assert.equal(logs.length, beforeTelemetry + 1, "missing IDs produce only one diagnostic per worker");
+  assert.match(logs.at(-1)[0], /no ad_v/);
+  adRequestListener({ url: "https://www.youtube.com/api/stats/ads?content_v=B3eciVIAwPs&ad_v=c60usiz-Z34" });
+  assert.equal(logs.some(args => args[0] === "[YouTube Ad] video ID:" && args[1] === "c60usiz-Z34"), true);
   const record = sampleImpression();
   const send = () => new Promise(resolve => {
     assert.equal(listener({ type: "record-impression", record }, { tab: { id: 1 } }, resolve), true);

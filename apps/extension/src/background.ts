@@ -1,4 +1,5 @@
 import { registerAutomaticTracking } from "./auto-tracking.ts";
+import { registerAdVideoIdLogger } from "./ad-video-id-logger.ts";
 import { LOCAL_SERVER_ENDPOINT } from "./api/impression-api-client.ts";
 import { createMessageHandler } from "./message-handler.ts";
 import { createServerImpressionStore } from "./storage/impression-store.ts";
@@ -21,9 +22,6 @@ const handleMessage = createMessageHandler({
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   if (isExtensionMessage(message)) {
-    console.info(`[YouTube Ad Impressions] service worker received ${message.type}`, {
-      eventId: message.type === "record-impression" ? message.record.event_id : undefined,
-    });
     return handleMessage(message, sendResponse);
   }
   console.warn(`[YouTube Ad Impressions] service worker ignored unknown message`, message);
@@ -31,3 +29,4 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 });
 
 registerAutomaticTracking();
+registerAdVideoIdLogger();

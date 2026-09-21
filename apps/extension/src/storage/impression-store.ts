@@ -34,13 +34,15 @@ export function createServerImpressionStore(options: {
   endpoint: string;
   getToken: () => Promise<string | null>;
   fetch?: Fetch;
+  timeoutMs?: number;
   info?: (message: string, detail?: unknown) => void;
   error?: (message: string, detail?: unknown) => void;
 }): ImpressionStore {
   const fetchRequest = options.fetch ?? globalThis.fetch;
-  const info = options.info ?? ((message, detail) => console.info(message, detail ?? ""));
   const error = options.error ?? ((message, detail) => console.error(message, detail ?? ""));
-  async function request(path = "", init?: RequestInit): Promise<Response> {
+  // Stay below Chrome's 30-second service-worker fetch response limit.
+  const timeoutMs = options.timeoutMs ?? 25_000;
+  async function request<T>(path = "", init?: RequestInit): Promise<T> {
     const method = init?.method ?? "GET";
     const url = `${options.endpoint}${path}`;
     const token = await options.getToken();
@@ -49,48 +51,66 @@ export function createServerImpressionStore(options: {
       throw new Error("Sign in to your account to load and save impressions.");
     }
     const startedAt = performance.now();
-    info(`[YouTube Ad Impressions] API request starting: ${method} ${url}`, { tokenConfigured: true });
-    try {
-      const response = await fetchRequest(url, {
-        ...init,
-        signal: AbortSignal.timeout(10_000),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init?.headers },
-      });
-      info(`[YouTube Ad Impressions] API response: ${method} ${url} -> ${response.status} (${Math.round(performance.now() - startedAt)}ms)`);
-      if (!response.ok) {
-        const responseText = await response.clone().text().catch(() => "");
-        error(`[YouTube Ad Impressions] API rejected request: ${method} ${url}`, responseText || `HTTP ${response.status}`);
-        if (response.status === 401) {
-          throw new Error("Your session was rejected (HTTP 401). Please log in again.");
+    // Retry once with the same serialized body/event ID. A timed-out POST may
+    // already have committed; the server treats that event ID as a duplicate.
+    for (let attempt = 0; ; attempt += 1) {
+      let retryable = false;
+      try {
+        const response = await fetchRequest(url, {
+          ...init,
+          signal: AbortSignal.timeout(timeoutMs),
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init?.headers },
+        });
+        if (!response.ok) {
+          retryable = [502, 503, 504].includes(response.status);
+          if (response.status === 401) {
+            throw new Error("Your session was rejected (HTTP 401). Please log in again.");
+          }
+          throw new Error(`Server returned HTTP ${response.status} ${response.statusText}.`);
         }
-        throw new Error(`Server returned HTTP ${response.status}. Check the local server console.`);
-      }
-      return response;
-    } catch (failure) {
-      error(`[YouTube Ad Impressions] API request failed: ${method} ${url}`, failure);
-      if (failure instanceof Error && failure.name === "TimeoutError") {
-        throw new Error("The local server did not respond within 10 seconds. Check that it is running and retry.");
-      }
-      if (failure instanceof TypeError) {
+        // Keep body reads inside the timeout/error handling too.
+        return await response.json() as T;
+      } catch (failure) {
+        const name = failure && typeof failure === "object" && "name" in failure ? String(failure.name) : "Error";
+        if (attempt === 0 && (retryable || name === "TimeoutError" || name === "TypeError")) continue;
+        const detail = failure && typeof failure === "object" && "message" in failure ? String(failure.message) : String(failure);
         const origin = new URL(options.endpoint).origin;
-        throw new Error(`Could not connect to the server at ${origin}. Check that it is running and retry.`);
+        const message = name === "TimeoutError"
+          ? `The server at ${origin} did not respond within ${timeoutMs / 1000} seconds. It may be starting up; retry shortly.`
+          : name === "TypeError"
+            ? `Could not connect to the server at ${origin}: ${detail}`
+            : `${name}: ${detail}`;
+        error(`[YouTube Ad Impressions] ${method} ${url} failed after ${Math.round(performance.now() - startedAt)}ms: ${message}`);
+        throw new Error(message, { cause: failure });
       }
-      throw failure;
     }
   }
   return {
     addImpression: async (record) => {
-      info(`[YouTube Ad Impressions] mapping impression for POST`, { eventId: record.event_id });
       const canonical: AdImpressionV1 = await toAdImpressionV1(record);
-      const response = await request("", { method: "POST", body: JSON.stringify(canonical) });
-      const body = await response.json() as { event_id: string };
-      info(`[YouTube Ad Impressions] PostgreSQL write confirmed`, { eventId: body.event_id });
+      const body = await request<{ event_id: string }>("", { method: "POST", body: JSON.stringify(canonical) });
       return body.event_id;
     },
     getImpressions: async () => {
-      const response = await request("?limit=100");
-      const body = await response.json() as { records: ServerRow[] };
-      return body.records.map(fromServer);
+      const records: AdImpressionRecord[] = [];
+      let cursor: string | null = null;
+      const visited = new Set<string>();
+      do {
+        const path: string = `?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+        const body = await request<{ records: ServerRow[]; nextCursor?: string | null }>(path);
+        // Older servers silently truncate history. Do not display that page as
+        // a lifetime total while the API update is waiting to be deployed.
+        if (body.nextCursor === undefined && body.records.length >= 100) {
+          throw new Error("The server needs the history pagination update to load more than 100 impressions.");
+        }
+        records.push(...body.records.map(fromServer));
+        cursor = body.nextCursor ?? null;
+        if (cursor) {
+          if (visited.has(cursor)) throw new Error("The server returned a repeated history cursor.");
+          visited.add(cursor);
+        }
+      } while (cursor);
+      return records;
     },
   };
 }

@@ -1,6 +1,6 @@
 import { requireUserId } from "./tenant.js";
 import type { AdImpressionV1 } from "@ad-impressions/contracts";
-import { and, count, desc, eq, gte, lte, max, min, or, sql, sum } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, lte, max, min, or, sql, sum } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { PostgresDatabaseClient } from "../db/postgres/client.js";
 import { adImpressions, profiles } from "../db/postgres/schema.js";
@@ -8,6 +8,7 @@ import { adImpressions, profiles } from "../db/postgres/schema.js";
 export type InsertStatus = "inserted" | "duplicate";
 
 export interface ImpressionFilters {
+  before?: { startedAt: string; eventId: string };
   advertiser?: string;
   terms?: string[];
   from?: string;
@@ -199,6 +200,12 @@ export async function searchImpressions(
     ...dateConditions(filters.from, filters.to),
     ...(filters.skipped === undefined ? [] : [eq(adImpressions.skipped, filters.skipped)]),
   ];
+  if (filters.before) {
+    conditions.push(or(
+      lt(adImpressions.startedAt, filters.before.startedAt),
+      and(eq(adImpressions.startedAt, filters.before.startedAt), lt(adImpressions.eventId, filters.before.eventId)),
+    )!);
+  }
   const advertiser = filters.advertiser === undefined ? undefined : advertiserConditions(filters.advertiser);
   if (advertiser) conditions.push(advertiser);
   const terms = filters.terms === undefined ? undefined : termCondition(filters.terms);
@@ -208,7 +215,7 @@ export async function searchImpressions(
     .select(compactColumns)
     .from(adImpressions)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(adImpressions.startedAt), desc(adImpressions.id))
+    .orderBy(desc(adImpressions.startedAt), desc(adImpressions.eventId))
     .limit(clampLimit(filters.limit, SEARCH_DEFAULT_LIMIT));
 }
 

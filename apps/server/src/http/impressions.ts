@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { toAdImpressionV1 } from "@ad-impressions/contracts";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import type { ImpressionStore } from "../repositories/store.js";
 import { requireSupabaseAuth, type AuthenticatedRequest, type VerifyAccessToken } from "./supabase-auth.js";
 
@@ -27,9 +27,23 @@ export function createImpressionsRouter(
 
   router.get("/", async (req: Request, res: Response) => {
     const requested = Number(req.query.limit ?? 100);
-    const limit = Number.isFinite(requested) ? requested : 100;
-    const records = await store.searchImpressions((req as AuthenticatedRequest).auth!.userId, { limit });
-    res.json({ records });
+    const limit = Number.isFinite(requested) ? Math.min(100, Math.max(1, Math.floor(requested))) : 100;
+    let before: { startedAt: string; eventId: string } | undefined;
+    if (req.query.cursor !== undefined) {
+      try {
+        if (typeof req.query.cursor !== "string" || req.query.cursor.length > 4096) throw new Error("Invalid cursor");
+        before = z.object({ startedAt: z.iso.datetime({ offset: true }), eventId: z.string().min(1) })
+          .parse(JSON.parse(req.query.cursor));
+      } catch {
+        res.status(400).json({ error: "invalid_cursor" });
+        return;
+      }
+    }
+    const records = await store.searchImpressions((req as AuthenticatedRequest).auth!.userId, { limit, before });
+    const last = records.at(-1);
+    const nextCursor = records.length === limit && last
+      ? JSON.stringify({ startedAt: last.startedAt, eventId: last.eventId }) : null;
+    res.json({ records, nextCursor });
   });
 
   router.post("/", async (req: Request, res: Response) => {

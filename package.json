@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "dev": "npm run build --workspace @ad-impressions/contracts && npm run dev --workspace @ad-impressions/server",
+    "lint": "oxlint --deny-warnings apps packages",
+    "lint:fix": "oxlint --fix --deny-warnings apps packages",
     "migrate": "npm run migrate --workspace @ad-impressions/server",
     "test": "npm run test --workspaces --if-present",
     "test:extension": "npm run test --workspace @ad-impressions/extension",
@@ -17,6 +19,7 @@
     "typecheck:extension": "npm run typecheck --workspace @ad-impressions/extension"
   },
   "devDependencies": {
+    "oxlint": "^1.83.0",
     "supabase": "^2.116.0"
   }
 }

@@ -6,7 +6,8 @@
   "permissions": [
     "identity",
     "storage",
-    "scripting"
+    "scripting",
+    "webRequest"
   ],
   "host_permissions": [
     "http://127.0.0.1:8787/*",

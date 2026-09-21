@@ -135,7 +135,7 @@ test("publish emits a page event with host and observation time", () => {
       observedAt: "2026-01-01T00:00:00.000Z",
       startedAtMs: 42,
     });
-    assert.equal(logged.length, 1);
+    assert.equal(logged.length, 0);
   } finally {
     globalScope["document"] = savedDocument;
     globalScope["CustomEvent"] = savedCustomEvent;
