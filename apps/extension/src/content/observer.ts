@@ -28,6 +28,7 @@ export interface ObserveYouTubeAdsCallbacks {
   ) => void;
   onImpressionEnded: (detail: ImpressionEndDetail) => void;
   onSkipPressed?: (impressionIndex: number) => void;
+  onAdVideoId?: (impressionIndex: number, adVideoId: string) => void;
 }
 
 export interface YouTubeAdObserver {
@@ -35,6 +36,7 @@ export interface YouTubeAdObserver {
   readonly impressionIndex: number;
   getVideo(): HTMLVideoElement | null;
   refresh(): void;
+  captureAdVideoId(adVideoId: string): void;
   destroy(reason?: string): void;
 }
 
@@ -175,6 +177,14 @@ export function observeYouTubeAds(
       );
     },
     refresh: findAndAttachPlayer,
+    captureAdVideoId(adVideoId) {
+      readPlayerState();
+      if (!state.active) return;
+      // Resolve the existing lifecycle even if DOM inspection is debounced.
+      window.clearTimeout(domainTimer);
+      inspectAdvertiser();
+      callbacks.onAdVideoId?.(impressions.impressionIndex, adVideoId);
+    },
     destroy(reason = "pagehide") {
       playerObserver?.disconnect();
       advertiserObserver?.disconnect();

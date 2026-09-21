@@ -19,6 +19,7 @@ test("cold worker without a popup or DOM restores session and POSTs a content-sc
     token_type: "bearer",
   }) };
   const requests = [];
+  const deliveries = [];
   const timers = new Set();
   const logs = [];
   let listener;
@@ -37,7 +38,7 @@ test("cold worker without a popup or DOM restores session and POSTs a content-sc
       return Response.json({ event_id: JSON.parse(init.body).event_id }, { status: 201 });
     },
     chrome: {
-      tabs: { query: async () => [], onUpdated: { addListener: () => {} } },
+      tabs: { sendMessage: async (...args) => { deliveries.push(args); }, query: async () => [], onUpdated: { addListener: () => {} } },
       storage: { local: {
         get: async key => ({ [key]: values[key] }),
         set: async data => Object.assign(values, data),
@@ -62,14 +63,21 @@ test("cold worker without a popup or DOM restores session and POSTs a content-sc
   adRequestListener({ url: "https://www.youtube.com/api/stats/ads?ad_v=" });
   assert.equal(logs.length, beforeTelemetry + 1, "missing IDs produce only one diagnostic per worker");
   assert.match(logs.at(-1)[0], /no ad_v/);
-  adRequestListener({ url: "https://www.youtube.com/api/stats/ads?content_v=B3eciVIAwPs&ad_v=c60usiz-Z34" });
+  adRequestListener({ tabId: 42, url: "https://www.youtube.com/api/stats/ads?content_v=B3eciVIAwPs&ad_v=c60usiz-Z34" });
+  assert.equal(deliveries.length, 1);
+  assert.equal(deliveries[0][0], 42);
+  assert.equal(deliveries[0][1].adVideoId, "c60usiz-Z34");
+  assert.equal(deliveries[0][2].frameId, 0);
+  adRequestListener({ tabId: -1, url: "https://www.youtube.com/api/stats/ads?ad_v=ignored" });
+  assert.equal(deliveries.length, 1);
   assert.equal(logs.some(args => args[0] === "[YouTube Ad] video ID:" && args[1] === "c60usiz-Z34"), true);
-  const record = sampleImpression();
+  const record = { ...sampleImpression(), adVideoId: "c60usiz-Z34" };
   const send = () => new Promise(resolve => {
     assert.equal(listener({ type: "record-impression", record }, { tab: { id: 1 } }, resolve), true);
   });
   assert.equal((await send()).ok, true, JSON.stringify(logs));
   assert.equal(requests.length, 1);
+  assert.equal(JSON.parse(requests[0].init.body).adVideoId, "c60usiz-Z34");
   assert.equal(requests[0].init.method, "POST");
   assert.equal(new Headers(requests[0].init.headers).get("Authorization"), "Bearer test-access-token");
   delete values["sb-127-auth-token"];

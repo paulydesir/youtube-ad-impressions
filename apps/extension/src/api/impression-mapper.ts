@@ -46,6 +46,7 @@ export async function toAdImpressionV1(
   const podId = record.pod_id?.trim() || legacyPodId(eventId);
   return {
     schema_version: 1,
+    adVideoId: record.adVideoId,
     event_id: eventId,
     source: "youtube",
     started_at: record.timestamp,

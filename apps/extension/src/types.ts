@@ -1,5 +1,6 @@
 
 export interface AdImpressionRecord {
+  adVideoId?: string;
   event_id?: string;
   pod_id?: string;
   advertiser_name: string | null;

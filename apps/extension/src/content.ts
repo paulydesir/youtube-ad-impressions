@@ -30,6 +30,7 @@ const transport = createContentTransport({
     observer.destroy("extension-invalidated");
     impressionMetadata.clear();
     diagnostic.status = "reload-required";
+    chrome.runtime.onMessage.removeListener(onAdVideoIdMessage);
     diagnostic.error = "Refresh this YouTube tab to resume tracking.";
     diagnostic.refresh = undefined;
     document.documentElement.dataset["youtubeAdImpressionWatcher"] = "reload-required";
@@ -72,7 +73,20 @@ const observer = observeYouTubeAds({
       new Date().toISOString(),
     );
   },
+  onAdVideoId(impressionIndex, adVideoId) {
+    const metadata = impressionMetadata.get(impressionIndex);
+    if (metadata) metadata.adVideoId = adVideoId;
+  },
 });
+
+function onAdVideoIdMessage(message: unknown) {
+  if (typeof message !== "object" || message === null) return;
+  const candidate = message as { type?: unknown; adVideoId?: unknown };
+  if (candidate.type === "ad-video-id" && typeof candidate.adVideoId === "string" && candidate.adVideoId) {
+    observer.captureAdVideoId(candidate.adVideoId);
+  }
+}
+chrome.runtime.onMessage.addListener(onAdVideoIdMessage);
 
 const watchTime = createWatchTimeTracker({
   isAdActive: () => observer.active,
@@ -85,6 +99,7 @@ function onPageHide() {
   window.clearInterval(watchTimer);
   watchTime.flush();
   observer.destroy("pagehide");
+  chrome.runtime.onMessage.removeListener(onAdVideoIdMessage);
   diagnostic.status = "stopped";
   window.removeEventListener("pagehide", onPageHide);
 }

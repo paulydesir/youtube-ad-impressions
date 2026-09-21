@@ -20,6 +20,7 @@ export const adImpressions = pgTable(
     endedAt: text("ended_at"),
     durationMs: integer("duration_ms"),
     hostVideoId: text("host_video_id"),
+    adVideoId: text("ad_video_id"),
     advertiserName: text("advertiser_name"),
     advertiserDomain: text("advertiser_domain"),
     adHeadline: text("ad_headline"),

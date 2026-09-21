@@ -4,6 +4,7 @@ export const adImpressionV1Schema = z.object({
   schema_version: z.literal(1),
   event_id: z.string().min(1),
   source: z.literal("youtube"),
+  adVideoId: z.string().optional(),
   started_at: z.iso.datetime({ offset: true }),
   ended_at: z.iso.datetime({ offset: true }).nullable(),
   duration_ms: z.number().int().nonnegative().nullable(),

@@ -3,6 +3,7 @@ import type { AdMetadata } from "./extract.ts";
 import type { IdentifiedAdImpressionRecord } from "../types.ts";
 
 export interface StoredMetadata extends AdMetadata {
+  adVideoId?: string;
   skipped: boolean;
   skipClickedAt: string | null;
 }
@@ -14,6 +15,7 @@ export function buildImpressionRecord(
 ): IdentifiedAdImpressionRecord {
   return {
     event_id: detail.eventId,
+    adVideoId: metadata.adVideoId,
     pod_id: detail.podId,
     advertiser_name: metadata.advertiserName ?? metadata.advertiserDomain ?? null,
     advertiser_url: metadata.advertiserDomain ?? null,
