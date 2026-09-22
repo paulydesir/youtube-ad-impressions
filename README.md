@@ -63,6 +63,22 @@ A browser window will open where you can sign in and authorize access.
 
 The MCP client can then securely access the ad history associated with your account.
 
+To read what an ad says, the client can call `search_ad_impressions` or
+`get_advertiser_overview`, then pass an impression's `adId` to
+`get_ad_transcript`: `{"adId":"<ad UUID>"}`. The tool reads the linked `ads`
+record and returns its transcript, language, model, transcription timestamp,
+and job status. It also accepts `{"adVideoId":"<YouTube video ID>"}`; provide
+exactly one ID. Only ads linked to your impressions are accessible.
+`status: "found"` with a null transcript means transcription is not yet
+available; `jobStatus` indicates processing progress or failure.
+`status: "not_found"` means no accessible ad matched the ID.
+
+For multiple ads, call `get_ad_transcripts` with `{"adIds":["<ad UUID>","<another ad UUID>"]}`
+(1–50 IDs). The `transcripts` array contains one result per requested ID, in input
+order, including duplicates. Each result has the same fields and status as the
+single-ad tool. Missing or inaccessible IDs return `not_found` without preventing
+other results. The batch uses one database query with the same ownership checks.
+
 #### 5. Ask Questions About Your Ads
 
 Once connected, you can interact with your ad history using natural language.

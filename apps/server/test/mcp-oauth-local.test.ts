@@ -29,7 +29,8 @@ it.skipIf(process.env.MCP_OAUTH_INTEGRATION !== "1")("real Supabase OAuth: disco
     insertImpression: async () => { throw new Error("read only"); },
     searchImpressions: async id => { calls.push(id); return []; },
     getAdvertiserStats: async () => [], getAdvertiserOverviewData: async () => { throw new Error("unused"); },
-    getAdTranscript: async () => null,
+    getAdTranscripts: async () => [],
+  getAdTranscript: async () => null,
   };
   const verifyMcp = createMcpTokenVerifier(config.API_URL, resourceUrl);
   const app = createApp({

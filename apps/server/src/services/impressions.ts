@@ -1,5 +1,6 @@
 import type {
   AdTranscript,
+  AdTranscriptLookup,
   AdvertiserStatsFilters,
   CompactImpression,
   ImpressionFilters,
@@ -53,9 +54,10 @@ export async function searchImpressions(
 
 export async function getAdTranscript(
   store: ImpressionStore,
-  adVideoId: string,
+  userId: string,
+  lookup: AdTranscriptLookup,
 ): Promise<AdTranscript | null> {
-  return store.getAdTranscript(adVideoId);
+  return store.getAdTranscript(userId, lookup);
 }
 
 export async function getAdvertiserStats(
@@ -112,4 +114,23 @@ export async function getAdvertiserOverview(
     headlines: overview.headlines,
     creativeTitles: overview.creativeTitles,
   };
+}
+
+export async function getAdTranscripts(store: ImpressionStore, userId: string, adIds: string[]) {
+  const ads = await store.getAdTranscripts(userId, adIds);
+  const byId = new Map(ads.map(ad => [ad.adId.toLowerCase(), ad]));
+  return adIds.map(adId => {
+    const ad = byId.get(adId.toLowerCase());
+    return ad ? { status: "found" as const, ...ad } : {
+      status: "not_found" as const,
+      adId,
+      source: null,
+      adVideoId: null,
+      transcript: null,
+      transcriptLanguage: null,
+      transcriptionModel: null,
+      transcribedAt: null,
+      jobStatus: null,
+    };
+  });
 }
