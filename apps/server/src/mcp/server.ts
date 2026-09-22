@@ -1,8 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ImpressionStore } from "../repositories/store.js";
 import { requireUserId } from "../repositories/tenant.js";
-import { searchImpressions, getAdvertiserStats, getAdvertiserOverview } from "../services/impressions.js";
+import { getAdTranscript, searchImpressions, getAdvertiserStats, getAdvertiserOverview } from "../services/impressions.js";
 import {
+  getAdTranscriptInputShape,
+  getAdTranscriptOutputSchema,
   getAdvertiserOverviewInputShape,
   getAdvertiserOverviewOutputSchema,
   getAdvertiserStatsInputSchema,
@@ -15,6 +17,7 @@ export const MCP_TOOL_NAMES = [
   "search_ad_impressions",
   "get_advertiser_stats",
   "get_advertiser_overview",
+  "get_ad_transcript",
 ] as const;
 
 const READ_ONLY_ANNOTATIONS = {
@@ -81,6 +84,28 @@ export function createMcpServer(store: ImpressionStore, userId: string, log: (me
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
     async ({ advertiser }) => result("get_advertiser_overview", async () => ({ ...await getAdvertiserOverview(store, userId, advertiser) })),
+  );
+
+  server.registerTool(
+    "get_ad_transcript",
+    {
+      description:
+        "Fetch the full Whisper transcript for one YouTube ad video ID, plus transcription metadata and job status. " +
+        "Use when the user asks what an ad says or wants to analyze ad content. Returns null transcript when not yet transcribed.",
+      inputSchema: getAdTranscriptInputShape,
+      outputSchema: getAdTranscriptOutputSchema,
+      annotations: { ...READ_ONLY_ANNOTATIONS },
+    },
+    async ({ adVideoId }) => result("get_ad_transcript", async () => ({
+      adVideoId,
+      ...(await getAdTranscript(store, adVideoId) ?? {
+        transcript: null,
+        transcriptLanguage: null,
+        transcriptionModel: null,
+        transcribedAt: null,
+        jobStatus: null,
+      }),
+    })),
   );
 
   return server;

@@ -20,6 +20,7 @@ const store: ImpressionStore = {
   searchImpressions: async () => [],
   getAdvertiserStats: async () => [],
   getAdvertiserOverviewData: async () => ({ stats: null, recent: [], headlines: [], creativeTitles: [] }),
+  getAdTranscript: async () => null,
 };
 
 function testApp(requestLog?: (message: string) => void) {

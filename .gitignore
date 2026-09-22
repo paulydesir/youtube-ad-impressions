@@ -18,4 +18,12 @@ dist/
 # Test coverage
 coverage/
 
+# Python (transcription worker)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.venv-worker/
+*.egg-info/
+
 apps/server/public/consent.js

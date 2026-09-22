@@ -15,6 +15,13 @@
       "when": 1790032787309,
       "tag": "0001_medical_madame_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790042946650,
+      "tag": "0002_sour_adam_destine",
+      "breakpoints": true
     }
   ]
 }
