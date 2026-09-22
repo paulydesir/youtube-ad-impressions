@@ -1,88 +1,94 @@
-import type {
-  ExtensionMessage,
-  IdentifiedAdImpressionRecord,
-} from "../types.ts";
+import type { ExtensionMessage, IdentifiedAdImpressionRecord } from "../types.ts";
 
 export const CONTENT_EVENT_NAME = "youtube-ad-impression-transition";
 
 export interface ChromeMessageSender {
-  (
-    message: ExtensionMessage,
-    onResponse?: (response: unknown) => void,
-  ): void;
+  (message: ExtensionMessage, onResponse?: (response: unknown) => void): void;
 }
 
-export interface ContentTransportOptions {
-  sender?: ChromeMessageSender;
+interface FailureCallbacks {
   onInvalidated?: () => void;
-  eventName?: string;
-  hostVideoId?: () => string | null;
   warn?: (message: string) => void;
   error?: (message: string, detail?: unknown) => void;
   info?: (message: string, detail?: unknown) => void;
+}
+
+export interface ContentTransportOptions extends FailureCallbacks {
+  sender?: ChromeMessageSender;
+  eventName?: string;
+  hostVideoId?: () => string | null;
   now?: () => string;
 }
 
 export interface ContentTransport {
   readonly eventName: string;
-  sendExtensionMessage(
-    message: ExtensionMessage,
-    onResponse?: (response: unknown) => void,
-  ): void;
+  sendExtensionMessage(message: ExtensionMessage, onResponse?: (response: unknown) => void): void;
   publish(type: string, detail: Record<string, unknown>): void;
   sendRecordImpression(record: IdentifiedAdImpressionRecord): void;
   sendWatchTime(milliseconds: number): void;
 }
 
-export function createContentTransport(
-  options: ContentTransportOptions = {},
-): ContentTransport {
-  const {
-    sender,
-    eventName = CONTENT_EVENT_NAME,
-    hostVideoId = () => new URL(location.href).searchParams.get("v"),
-    warn = (message) => console.warn(message),
-    error = (message, detail) => console.error(message, detail),
-    info = (message, detail) => console.info(message, detail),
-    now = () => new Date().toISOString(),
-  } = options;
+function isInvalidatedContext(message: string): boolean {
+  return message.toLowerCase().includes("extension context invalidated");
+}
+
+function toMessage(failure: unknown): string {
+  if (failure instanceof Error) {
+    return failure.message;
+  }
+  return String(failure);
+}
+
+export function createContentTransport(options: ContentTransportOptions = {}): ContentTransport {
+  const eventName = options.eventName ?? CONTENT_EVENT_NAME;
+  const getHostVideoId = options.hostVideoId ?? defaultHostVideoId;
+  const now = options.now ?? (() => new Date().toISOString());
+  const warn = options.warn ?? noop;
+  const reportError = options.error ?? noop;
+  const info = options.info ?? noop;
+
   let invalidated = false;
   let runtimeUnavailableLogged = false;
 
+  function defaultHostVideoId(): string | null {
+    return new URL(location.href).searchParams.get("v");
+  }
+
   function invalidate(): void {
-    if (invalidated) return;
+    if (invalidated) {
+      return;
+    }
     invalidated = true;
     info("[YouTube Ad Impressions] extension reloaded; refresh this YouTube tab to resume tracking");
     options.onInvalidated?.();
   }
 
-  function handleFailure(detail: unknown): void {
-    const message = detail instanceof Error ? detail.message : String(detail);
-    if (!globalThis.chrome?.runtime?.id || /extension context invalidated/i.test(message)) {
-      invalidate();
-    } else {
-      warnRuntimeUnavailable();
-    }
-  }
-
   function warnRuntimeUnavailable(): void {
-    if (runtimeUnavailableLogged) return;
+    if (runtimeUnavailableLogged) {
+      return;
+    }
     runtimeUnavailableLogged = true;
-    warn(
-      "[YouTube Ad Impressions] could not contact the background worker; will retry on the next message",
-    );
+    warn("[YouTube Ad Impressions] could not contact the background worker; will retry on the next message");
   }
 
-  function defaultSender(
-    message: ExtensionMessage,
-    onResponse?: (response: unknown) => void,
-  ): void {
-    if (invalidated) return;
+  function handleFailure(failure: unknown): void {
+    const runtimeAlive = Boolean(globalThis.chrome?.runtime?.id);
+    if (!runtimeAlive || isInvalidatedContext(toMessage(failure))) {
+      invalidate();
+      return;
+    }
+    warnRuntimeUnavailable();
+  }
+
+  function defaultSender(message: ExtensionMessage, onResponse?: (response: unknown) => void): void {
+    if (invalidated) {
+      return;
+    }
+    if (!globalThis.chrome?.runtime?.id) {
+      invalidate();
+      return;
+    }
     try {
-      if (!globalThis.chrome?.runtime?.id) {
-        invalidate();
-        return;
-      }
       chrome.runtime.sendMessage(message, (response: unknown) => {
         if (chrome.runtime.lastError) {
           handleFailure(chrome.runtime.lastError.message);
@@ -92,52 +98,44 @@ export function createContentTransport(
         onResponse?.(response);
       });
     } catch (failure) {
-      // Reloading an unpacked extension invalidates already-running content
-      // scripts; sendMessage throws before lastError can report the problem.
       handleFailure(failure);
     }
   }
 
-  const send = sender ?? defaultSender;
+  const send = options.sender ?? defaultSender;
 
-  function sendExtensionMessage(
-    message: ExtensionMessage,
-    onResponse?: (response: unknown) => void,
-  ): void {
+  function sendExtensionMessage(message: ExtensionMessage, onResponse?: (response: unknown) => void): void {
     send(message, onResponse);
   }
 
   function publish(type: string, detail: Record<string, unknown>): void {
     const payload = {
       type,
-      hostVideoId: hostVideoId(),
+      hostVideoId: getHostVideoId(),
       observedAt: now(),
       ...detail,
     };
-
     document.dispatchEvent(new CustomEvent(eventName, { detail: payload }));
   }
 
   function sendRecordImpression(record: IdentifiedAdImpressionRecord): void {
     const message: ExtensionMessage = { type: "record-impression", record };
     sendExtensionMessage(message, (value) => {
-      const response = value as { ok?: boolean; id?: string; error?: string } | undefined;
-      if (!response?.ok) {
-        error(`[YouTube Ad Impressions] failed to save impression ${record.event_id}: ${response?.error ?? "No response from service worker"}`);
+      const response = value as { ok?: boolean; error?: string } | undefined;
+      if (response?.ok !== true) {
+        const reason = response?.error ?? "No response from service worker";
+        reportError(`[YouTube Ad Impressions] failed to save impression ${record.event_id}: ${reason}`);
       }
     });
   }
 
   function sendWatchTime(milliseconds: number): void {
-    const message: ExtensionMessage = { type: "add-watch-time", milliseconds };
-    sendExtensionMessage(message);
+    sendExtensionMessage({ type: "add-watch-time", milliseconds });
   }
 
-  return {
-    eventName,
-    sendExtensionMessage,
-    publish,
-    sendRecordImpression,
-    sendWatchTime,
-  };
+  return { eventName, sendExtensionMessage, publish, sendRecordImpression, sendWatchTime };
+}
+
+function noop(): void {
+  // Quiet by default; callers opt into logging via callbacks.
 }

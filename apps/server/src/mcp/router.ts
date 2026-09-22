@@ -12,7 +12,7 @@ function methodNotAllowed(res: Response): void {
   });
 }
 
-export function createMcpRouter(store: ImpressionStore, log: (message: string) => void = console.info): Router {
+export function createMcpRouter(store: ImpressionStore): Router {
   const router = Router();
 
   router.post("/", async (req: Request, res: Response) => {
@@ -21,11 +21,9 @@ export function createMcpRouter(store: ImpressionStore, log: (message: string) =
       res.status(401).json({ error: "unauthorized" });
       return;
     }
-    const server = createMcpServer(store, auth.userId, log);
+    const server = createMcpServer(store, auth.userId);
     try {
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-      });
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       res.on("close", () => {
         void transport.close().catch(() => undefined);
         void server.close().catch(() => undefined);
@@ -33,7 +31,7 @@ export function createMcpRouter(store: ImpressionStore, log: (message: string) =
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
-      // eslint-disable-next-line no-console -- concise server-side diagnostic
+      // eslint-disable-next-line no-console -- unexpected transport failure
       console.error("Error handling MCP request:", error);
       if (!res.headersSent) {
         res.status(500).json({

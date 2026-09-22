@@ -1,19 +1,56 @@
 import { z } from "zod";
 
-const publicUrl = z.url().refine(value => {
-  const url = new URL(value);
-  return !url.username && !url.password && !url.search && !url.hash
-    && (url.protocol === "https:" || (url.protocol === "http:"
-      && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)));
-}, "Use HTTPS (HTTP is allowed only on loopback), without credentials, query or fragment").transform(value => new URL(value).href);
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+function isLoopback(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(hostname);
+}
+
+function isPublicUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.username !== "" || url.password !== "" || url.search !== "" || url.hash !== "") {
+    return false;
+  }
+  if (url.protocol === "https:") {
+    return true;
+  }
+  return url.protocol === "http:" && isLoopback(url.hostname);
+}
+
+function isRemoteUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname;
+    return !hostname.startsWith("localhost") && !hostname.startsWith("127.") && hostname !== "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const publicUrl = z
+  .url()
+  .refine(isPublicUrl, "Use HTTPS (HTTP is allowed only on loopback), without credentials, query or fragment")
+  .transform((value) => new URL(value).href);
 
 const sharedConfig = {
-    PORT: z.coerce.number().int().min(1).max(65535).default(8787),
-    POSTGRES_USER: z.string().min(1).default("ad_impressions"),
-    POSTGRES_PASSWORD: z.string().min(1).default("ad_impressions"),
-    POSTGRES_DB: z.string().min(1).default("ad_impressions"),
-    POSTGRES_PORT: z.coerce.number().int().min(1).max(65535).default(5432),
-    LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  PORT: z.coerce.number().int().min(1).max(65535).default(8787),
+  POSTGRES_USER: z.string().min(1).default("ad_impressions"),
+  POSTGRES_PASSWORD: z.string().min(1).default("ad_impressions"),
+  POSTGRES_DB: z.string().min(1).default("ad_impressions"),
+  POSTGRES_PORT: z.coerce.number().int().min(1).max(65535).default(5432),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 };
 
 const configSchema = z.discriminatedUnion("APP_ENV", [
@@ -28,11 +65,11 @@ const configSchema = z.discriminatedUnion("APP_ENV", [
   }),
   z.object({
     APP_ENV: z.literal("production"),
-    SUPABASE_URL: publicUrl.refine(value => !new URL(value).hostname.match(/^(localhost|127\.|\[::1\]$)/), "Production Supabase URL must be remote"),
+    SUPABASE_URL: publicUrl.refine(isRemoteUrl, "Production Supabase URL must be remote"),
     SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
     HOST: z.string().min(1).default("0.0.0.0"),
     DATABASE_URL: z.string().min(1),
-    MCP_RESOURCE_URL: publicUrl.refine(value => new URL(value).protocol === "https:", "Production MCP URL must use HTTPS"),
+    MCP_RESOURCE_URL: publicUrl.refine(isHttpsUrl, "Production MCP URL must use HTTPS"),
     ...sharedConfig,
   }),
 ]);

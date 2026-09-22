@@ -27,69 +27,68 @@ interface WatchTimeResponse {
   error?: string;
 }
 
-export type MessageResponse =
-  | RecordImpressionResponse
-  | DashboardResponse
-  | WatchTimeResponse;
+export type MessageResponse = RecordImpressionResponse | DashboardResponse | WatchTimeResponse;
+export type Respond = (response: MessageResponse) => void;
 
 function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
-function handleMessage(
-  deps: MessageHandlerDeps,
-  message: ExtensionMessage,
-  sendResponse: (response: MessageResponse) => void,
-): boolean {
-  const { impressionStore, watchTimeStore } = deps;
-
-  if (message.type === "record-impression") {
-    impressionStore.addImpression(message.record)
-      .then((id) => {
-        sendResponse({ ok: true, id });
-      })
-      .catch((error: unknown) => {
-        sendResponse({ ok: false, error: toErrorMessage(error) });
-      });
-    return true;
-  }
-
-  if (message.type === "get-dashboard") {
-    Promise.all([
-      impressionStore.getImpressions(),
-      watchTimeStore.getWatchTime(),
-    ])
-      .then(([records, watchTimeMs]) =>
-        sendResponse({
-          ok: true,
-          records: records.sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
-          analytics: aggregateImpressions(records, watchTimeMs),
-        }),
-      )
-      .catch((error: unknown) =>
-        sendResponse({ ok: false, error: toErrorMessage(error) }),
-      );
-    return true;
-  }
-
-  if (message.type === "add-watch-time") {
-    watchTimeStore
-      .addWatchTime(message.milliseconds)
-      .then(() => sendResponse({ ok: true }))
-      .catch((error: unknown) =>
-        sendResponse({ ok: false, error: toErrorMessage(error) }),
-      );
-    return true;
-  }
-
-  return false;
+function isRecordImpression(message: ExtensionMessage): message is Extract<ExtensionMessage, { type: "record-impression" }> {
+  return message.type === "record-impression";
 }
 
-export function createMessageHandler(
-  deps: MessageHandlerDeps,
-): (
-  message: ExtensionMessage,
-  sendResponse: (response: MessageResponse) => void,
-) => boolean {
-  return (message, sendResponse) => handleMessage(deps, message, sendResponse);
+export function createMessageHandler(deps: MessageHandlerDeps) {
+  return (message: ExtensionMessage, sendResponse: Respond): boolean => {
+    if (isRecordImpression(message)) {
+      void recordImpression(message.record, sendResponse);
+      return true;
+    }
+    if (message.type === "get-dashboard") {
+      void sendDashboard(sendResponse);
+      return true;
+    }
+    if (message.type === "add-watch-time") {
+      void addWatchTime(message.milliseconds, sendResponse);
+      return true;
+    }
+    return false;
+  };
+
+  async function recordImpression(
+    record: Extract<ExtensionMessage, { type: "record-impression" }>["record"],
+    sendResponse: Respond,
+  ): Promise<void> {
+    try {
+      const id = await deps.impressionStore.addImpression(record);
+      sendResponse({ ok: true, id });
+    } catch (error) {
+      sendResponse({ ok: false, error: toErrorMessage(error) });
+    }
+  }
+
+  async function sendDashboard(sendResponse: Respond): Promise<void> {
+    try {
+      const [records, watchTimeMs] = await Promise.all([
+        deps.impressionStore.getImpressions(),
+        deps.watchTimeStore.getWatchTime(),
+      ]);
+      const sorted = [...records].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      sendResponse({ ok: true, records: sorted, analytics: aggregateImpressions(sorted, watchTimeMs) });
+    } catch (error) {
+      sendResponse({ ok: false, error: toErrorMessage(error) });
+    }
+  }
+
+  async function addWatchTime(milliseconds: number, sendResponse: Respond): Promise<void> {
+    try {
+      await deps.watchTimeStore.addWatchTime(milliseconds);
+      sendResponse({ ok: true });
+    } catch (error) {
+      sendResponse({ ok: false, error: toErrorMessage(error) });
+    }
+  }
 }

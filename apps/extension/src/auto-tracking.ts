@@ -1,15 +1,13 @@
 const YOUTUBE_TABS = "https://www.youtube.com/*";
 
 // Reattach to tabs that predate an install, reload, or worker restart.
-export function registerAutomaticTracking(api = chrome) {
-  async function attach(tabId: number) {
+export function registerAutomaticTracking(api = chrome): void {
+  async function attach(tabId: number): Promise<void> {
     try {
       await api.scripting.executeScript({ target: { tabId }, files: ["dist/content.js"] });
-    } catch (error) {
-      // A tab can close/navigate during injection, or site access can be withheld.
-      console.info("[YouTube Ad Impressions] could not attach tracking", {
-        tabId, reason: error instanceof Error ? error.message : String(error),
-      });
+    } catch {
+      // A tab can close or navigate during injection, or site access
+      // can be withheld. The next navigation reattaches.
     }
   }
 
@@ -19,8 +17,13 @@ export function registerAutomaticTracking(api = chrome) {
     }
   });
 
-  void api.tabs.query({ url: YOUTUBE_TABS }).then(tabs =>
-    Promise.all(tabs.filter(tab => tab.id !== undefined && !tab.discarded)
-      .map(tab => attach(tab.id!))),
-  ).catch(error => console.info("[YouTube Ad Impressions] could not inspect open YouTube tabs", String(error)));
+  void api.tabs
+    .query({ url: YOUTUBE_TABS })
+    .then((tabs) => {
+      const targets = tabs.filter((tab) => tab.id !== undefined && !tab.discarded);
+      return Promise.all(targets.map((tab) => attach(tab.id as number)));
+    })
+    .catch(() => {
+      // No open tabs or missing permission; future navigations still attach.
+    });
 }
