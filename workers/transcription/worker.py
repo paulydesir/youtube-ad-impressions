@@ -3,7 +3,8 @@
 Batch flow:
   boot -> connect Postgres -> recover stale processing jobs ->
   claim up to N pending jobs -> load Whisper model once ->
-  for each job: yt-dlp download (in memory) -> faster-whisper transcribe ->
+  for each job: yt-dlp download (in memory) -> faster-whisper transcribe,
+  falling back to YouTube captions on acquisition/transcription failure ->
   persist transcript + mark completed (same transaction) ->
   on per-job failure: mark failed, continue -> exit.
 
@@ -21,6 +22,8 @@ import sys
 from dataclasses import dataclass
 
 import psycopg
+from requests import Session
+from youtube_transcript_api import YouTubeTranscriptApi
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("transcription-worker")
@@ -155,6 +158,27 @@ def transcribe_audio(model, audio_bytes: bytes, language: str = WHISPER_LANGUAGE
     return transcript, detected
 
 
+class CaptionSession(Session):
+    """Bound each caption HTTP request so a blocked request cannot hang the batch."""
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", (10, 30))
+        return super().request(method, url, **kwargs)
+
+
+def download_transcript(ad_video_id: str, language: str = WHISPER_LANGUAGE) -> tuple[str, str, str]:
+    log.info(f"[{ad_video_id}] caption download started")
+    with CaptionSession() as session:
+        result = YouTubeTranscriptApi(http_client=session).fetch(
+            ad_video_id, languages=[language]
+        )
+    transcript = " ".join(segment.text.strip() for segment in result if segment.text.strip())
+    if not transcript:
+        raise RuntimeError("YouTube returned empty captions")
+    source = "youtube-captions:auto" if result.is_generated else "youtube-captions:manual"
+    return transcript, result.language_code, source
+
+
 def complete_job(
     conn: psycopg.Connection,
     job: Job,
@@ -209,9 +233,26 @@ def fail_job(conn: psycopg.Connection, job: Job, error: Exception) -> None:
 
 def process_job(conn: psycopg.Connection, model, job: Job, model_name: str) -> bool:
     try:
-        media = download_audio(job.source_ad_id)
-        log.info(f"[{job.source_ad_id}] transcription started")
-        transcript, language = transcribe_audio(model, media)
+        try:
+            media = download_audio(job.source_ad_id)
+            log.info(f"[{job.source_ad_id}] transcription started")
+            transcript, language = transcribe_audio(model, media)
+            if not transcript.strip():
+                raise RuntimeError("empty Whisper transcript")
+        except Exception as primary_exc:
+            log.warning(
+                f"[{job.source_ad_id}] audio transcription failed; trying captions: "
+                f"{sanitize_error(str(primary_exc))[:300]}"
+            )
+            try:
+                transcript, language, model_name = download_transcript(job.source_ad_id)
+            except Exception as fallback_exc:
+                raise RuntimeError(
+                    f"audio transcription failed ({type(primary_exc).__name__}): "
+                    f"{sanitize_error(str(primary_exc), 700)}; "
+                    f"caption fallback failed ({type(fallback_exc).__name__}): "
+                    f"{sanitize_error(str(fallback_exc), 700)}"
+                ) from fallback_exc
         complete_job(conn, job, transcript, language, model_name)
         log.info(f"[{job.source_ad_id}] transcription complete: {len(transcript)} chars")
         log.info(f"[{job.source_ad_id}] completed")

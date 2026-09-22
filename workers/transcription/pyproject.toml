@@ -6,6 +6,8 @@ requires-python = ">=3.12"
 dependencies = [
   "faster-whisper==1.2.1",
   "yt-dlp==2026.8.19",
+  "youtube-transcript-api==1.2.4",
+  "requests>=2.32.3,<3",
   "psycopg[binary]==3.2.9",
 ]
 
