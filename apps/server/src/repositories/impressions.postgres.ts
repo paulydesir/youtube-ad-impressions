@@ -1,6 +1,7 @@
 import { requireUserId } from "./tenant.js";
 import type { AdImpressionV1 } from "@ad-impressions/contracts";
-import { and, count, desc, eq, gte, lt, lte, max, min, or, sql, sum } from "drizzle-orm";
+import { and, count, desc, eq, exists, gte, inArray, lt, lte, max, min, or, sql, sum } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { PostgresDatabaseClient } from "../db/postgres/client.js";
 import { adImpressions, ads, profiles, transcriptionJobs } from "../db/postgres/schema.js";
@@ -381,7 +382,11 @@ export async function getAdvertiserOverviewData(
   };
 }
 
+export type AdTranscriptLookup = { adId: string; adVideoId?: never } | { adVideoId: string; adId?: never };
+
 export interface AdTranscript {
+  adId: string;
+  source: string;
   adVideoId: string;
   transcript: string | null;
   transcriptLanguage: string | null;
@@ -392,12 +397,34 @@ export interface AdTranscript {
 
 export async function getAdTranscript(
   db: PostgresDatabaseClient,
-  adVideoIdParam: string,
+  userId: string,
+  lookup: AdTranscriptLookup,
 ): Promise<AdTranscript | null> {
-  const adVideoId = adVideoIdParam.trim();
-  if (!adVideoId) return null;
+  const rows = await selectAdTranscripts(db, userId,
+    lookup.adId !== undefined ? eq(ads.id, lookup.adId) : eq(ads.sourceAdId, lookup.adVideoId));
+  return rows[0] ?? null;
+}
+
+export async function getAdTranscripts(
+  db: PostgresDatabaseClient,
+  userId: string,
+  adIds: string[],
+): Promise<AdTranscript[]> {
+  requireUserId(userId);
+  if (adIds.length === 0) return [];
+  return selectAdTranscripts(db, userId, inArray(ads.id, [...new Set(adIds)]));
+}
+
+async function selectAdTranscripts(
+  db: PostgresDatabaseClient,
+  userId: string,
+  condition: SQL,
+): Promise<AdTranscript[]> {
+  requireUserId(userId);
   const rows = await db
     .select({
+      adId: ads.id,
+      source: ads.source,
       adVideoId: ads.sourceAdId,
       transcript: ads.transcript,
       transcriptLanguage: ads.transcriptLanguage,
@@ -407,16 +434,16 @@ export async function getAdTranscript(
     })
     .from(ads)
     .leftJoin(transcriptionJobs, eq(transcriptionJobs.adId, ads.id))
-    .where(and(eq(ads.source, "youtube"), eq(ads.sourceAdId, adVideoId)))
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  return {
-    adVideoId: row.adVideoId,
-    transcript: row.transcript,
-    transcriptLanguage: row.transcriptLanguage,
-    transcriptionModel: row.transcriptionModel,
+    .where(and(
+      eq(ads.source, "youtube"),
+      condition,
+      exists(db.select({ id: adImpressions.id }).from(adImpressions).where(and(
+        eq(adImpressions.userId, userId),
+        eq(adImpressions.adId, ads.id),
+      ))),
+    ));
+  return rows.map(row => ({
+    ...row,
     transcribedAt: row.transcribedAt ? row.transcribedAt.toISOString() : null,
-    jobStatus: row.jobStatus,
-  };
+  }));
 }

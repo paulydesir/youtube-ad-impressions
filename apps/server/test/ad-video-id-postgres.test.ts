@@ -26,9 +26,26 @@ it.skipIf(!process.env.DATABASE_URL)("POST persists optional adVideoId and rejec
       const body = await toAdImpressionV1(sampleImpression({ event_id: randomUUID(), adVideoId }));
       const response = await request(app).post("/api/v1/impressions").set("Authorization", "Bearer test-token").send(body);
       expect(response.status).toBe(201);
-      const result = await client.query("select ad_video_id, raw_json from ad_impressions where user_id=$1 and event_id=$2", [userId, body.event_id]);
+      const result = await client.query("select ad_video_id, ad_id, raw_json from ad_impressions where user_id=$1 and event_id=$2", [userId, body.event_id]);
       expect(result.rows[0].ad_video_id).toBe(adVideoId ?? null);
       expect(JSON.parse(result.rows[0].raw_json).adVideoId).toBe(adVideoId);
+      if (adVideoId) {
+        const adId = result.rows[0].ad_id;
+        expect(adId).toBeTruthy();
+        await client.query("update ads set transcript=$1, transcript_language='en', transcription_model='whisper', transcribed_at=$2 where id=$3",
+          ["Discover our latest offer.", "2026-09-22T12:00:00.000Z", adId]);
+        const transcript = await store.getAdTranscript(userId, { adId });
+        expect(transcript).toMatchObject({ adId, adVideoId, source: "youtube", transcript: "Discover our latest offer.",
+          transcriptLanguage: "en", transcriptionModel: "whisper", transcribedAt: "2026-09-22T12:00:00.000Z" });
+        expect(await store.getAdTranscript(userId, { adVideoId })).toEqual(transcript);
+        const otherUserId = randomUUID();
+        expect(await store.getAdTranscripts(userId, [adId, randomUUID(), adId])).toEqual([transcript]);
+        expect(await store.getAdTranscripts(otherUserId, [adId])).toEqual([]);
+        expect(await store.getAdTranscripts(userId, [])).toEqual([]);
+        expect(await store.getAdTranscript(otherUserId, { adId })).toBeNull();
+        expect(await store.getAdTranscript(otherUserId, { adVideoId })).toBeNull();
+        expect(await store.getAdTranscript(userId, { adId: randomUUID() })).toBeNull();
+      }
       const invalid = await request(app).post("/api/v1/impressions").set("Authorization", "Bearer test-token").send({ ...body, adVideoId: 123 });
       expect(invalid.status).toBe(400);
     }

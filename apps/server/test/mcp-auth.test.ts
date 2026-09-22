@@ -20,6 +20,7 @@ let app: ReturnType<typeof createApp>;
 const store: ImpressionStore = {
   insertImpression: vi.fn(), searchImpressions: vi.fn(),
   getAdvertiserStats: vi.fn(), getAdvertiserOverviewData: vi.fn(),
+  getAdTranscripts: async () => [],
   getAdTranscript: vi.fn(),
 };
 

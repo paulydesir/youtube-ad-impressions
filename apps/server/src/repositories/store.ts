@@ -1,6 +1,7 @@
 import type { AdImpressionV1 } from "@ad-impressions/contracts";
 import {
   type AdTranscript,
+  type AdTranscriptLookup,
   type AdvertiserOverviewData,
   type AdvertiserStatRow,
   type AdvertiserStatsFilters,
@@ -11,6 +12,7 @@ import {
 import type { PostgresDatabaseClient } from "../db/postgres/client.js";
 import {
   getAdTranscript as postgresTranscript,
+  getAdTranscripts as postgresTranscripts,
   getAdvertiserOverviewData as postgresOverview,
   getAdvertiserStats as postgresStats,
   insertImpression as postgresInsert,
@@ -19,6 +21,7 @@ import {
 
 export type {
   AdTranscript,
+  AdTranscriptLookup,
   AdvertiserOverviewData,
   AdvertiserStatRow,
   AdvertiserStatsFilters,
@@ -37,7 +40,8 @@ export interface ImpressionStore {
   searchImpressions(userId: string, filters?: ImpressionFilters): Promise<CompactImpression[]>;
   getAdvertiserStats(userId: string, filters?: AdvertiserStatsFilters): Promise<AdvertiserStatRow[]>;
   getAdvertiserOverviewData(userId: string, resolvedAdvertiser: string): Promise<AdvertiserOverviewData>;
-  getAdTranscript(adVideoId: string): Promise<AdTranscript | null>;
+  getAdTranscripts(userId: string, adIds: string[]): Promise<AdTranscript[]>;
+  getAdTranscript(userId: string, lookup: AdTranscriptLookup): Promise<AdTranscript | null>;
 }
 
 export function createPostgresStore(db: PostgresDatabaseClient): ImpressionStore {
@@ -48,6 +52,7 @@ export function createPostgresStore(db: PostgresDatabaseClient): ImpressionStore
     getAdvertiserStats: (userId, filters) => postgresStats(db, userId, filters),
     getAdvertiserOverviewData: (userId, resolvedAdvertiser) =>
       postgresOverview(db, userId, resolvedAdvertiser),
-    getAdTranscript: (adVideoId) => postgresTranscript(db, adVideoId),
+    getAdTranscripts: (userId, adIds) => postgresTranscripts(db, userId, adIds),
+    getAdTranscript: (userId, lookup) => postgresTranscript(db, userId, lookup),
   };
 }

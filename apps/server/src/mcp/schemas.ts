@@ -131,8 +131,8 @@ const impressionSchema = z.object({
   endedAt: z.string().nullable(),
   durationMs: z.number().nullable(),
   hostVideoId: z.string().nullable(),
-  adVideoId: z.string().nullable().optional(),
-  adId: z.string().nullable().optional(),
+  adVideoId: z.string().nullable().optional().describe("YouTube video ID; fallback input to get_ad_transcript."),
+  adId: z.string().nullable().optional().describe("Linked ads table ID. Pass this as adId to get_ad_transcript to read the ad content."),
   advertiserName: z.string().nullable(),
   advertiserDomain: z.string().nullable(),
   adHeadline: z.string().nullable(),
@@ -179,19 +179,30 @@ export const getAdvertiserOverviewOutputSchema = z.object({
   creativeTitles: z.array(z.string()),
 });
 
-export const getAdTranscriptInputShape = {
-  adVideoId: z
-    .string()
-    .trim()
-    .min(1)
-    .describe("YouTube ad video ID (the source_ad_id for source=youtube)."),
-};
+export const getAdTranscriptInputSchema = z.object({
+  adId: z.uuid().optional().describe("Linked ads table UUID returned as adId on an impression. Preferred lookup."),
+  adVideoId: z.string().trim().min(1).optional().describe("YouTube ad video ID returned as adVideoId on an impression. Use if adId is unavailable."),
+}).refine(value => (value.adId !== undefined) !== (value.adVideoId !== undefined), {
+  message: "Provide exactly one of adId or adVideoId",
+});
 
 export const getAdTranscriptOutputSchema = z.object({
-  adVideoId: z.string(),
+  status: z.enum(["found", "not_found"]).describe("Whether the ad exists in your observed history; found ads may still await transcription."),
+  adId: z.string().nullable(),
+  source: z.string().nullable(),
+  adVideoId: z.string().nullable(),
   transcript: z.string().nullable(),
   transcriptLanguage: z.string().nullable(),
   transcriptionModel: z.string().nullable(),
   transcribedAt: z.string().nullable(),
   jobStatus: z.string().nullable(),
+});
+
+export const getAdTranscriptsInputSchema = z.object({
+  adIds: z.array(z.uuid()).min(1).max(50)
+    .describe("1–50 ads table UUIDs from impressions. Returns one result per ID in input order, including duplicates."),
+});
+
+export const getAdTranscriptsOutputSchema = z.object({
+  transcripts: z.array(getAdTranscriptOutputSchema),
 });

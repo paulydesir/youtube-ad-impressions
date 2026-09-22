@@ -1,9 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ImpressionStore } from "../repositories/store.js";
 import { requireUserId } from "../repositories/tenant.js";
-import { getAdTranscript, searchImpressions, getAdvertiserStats, getAdvertiserOverview } from "../services/impressions.js";
+import { getAdTranscripts, getAdTranscript, searchImpressions, getAdvertiserStats, getAdvertiserOverview } from "../services/impressions.js";
 import {
-  getAdTranscriptInputShape,
+  getAdTranscriptsInputSchema,
+  getAdTranscriptsOutputSchema,
+  getAdTranscriptInputSchema,
   getAdTranscriptOutputSchema,
   getAdvertiserOverviewInputShape,
   getAdvertiserOverviewOutputSchema,
@@ -18,6 +20,7 @@ export const MCP_TOOL_NAMES = [
   "get_advertiser_stats",
   "get_advertiser_overview",
   "get_ad_transcript",
+  "get_ad_transcripts",
 ] as const;
 
 const READ_ONLY_ANNOTATIONS = {
@@ -48,7 +51,7 @@ export function createMcpServer(store: ImpressionStore, userId: string): McpServ
       description:
         "Search individual observed ad impressions by advertiser, keywords, date range, and skip behavior. " +
         "Use when the user asks about individual ads, promotions, headlines, timing, or skip behavior. " +
-        "Returns observed local data only, newest first.",
+        "Returns observed local data only, newest first. Pass an impression’s adId to get_ad_transcript to learn what the ad says, or pass up to 50 adIds to get_ad_transcripts.",
       inputSchema: searchAdImpressionsInputSchema,
       outputSchema: searchAdImpressionsOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
@@ -76,7 +79,7 @@ export function createMcpServer(store: ImpressionStore, userId: string): McpServ
       description:
         "Explain one advertiser: aggregate statistics plus recent observed impressions and the distinct headlines and creative titles actually seen. " +
         "Use when the user names one advertiser and wants a general explanation. Broad names may return an ambiguous status with observed candidate keys. " +
-        "Returns observed local data only.",
+        "Returns observed local data only. Pass a recent impression’s adId to get_ad_transcript to read its content, or use get_ad_transcripts for multiple ads.",
       inputSchema: getAdvertiserOverviewInputShape,
       outputSchema: getAdvertiserOverviewOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
@@ -88,22 +91,43 @@ export function createMcpServer(store: ImpressionStore, userId: string): McpServ
     "get_ad_transcript",
     {
       description:
-        "Fetch the full Whisper transcript for one YouTube ad video ID, plus transcription metadata and job status. " +
-        "Use when the user asks what an ad says or wants to analyze ad content. Returns null transcript when not yet transcribed.",
-      inputSchema: getAdTranscriptInputShape,
+        "Read an ad from the ads table using an impression’s adId (preferred), or adVideoId, plus its full transcript, transcription metadata and job status. " +
+        "Provide exactly one ID. Use after search_ad_impressions or get_advertiser_overview to understand what an ad says or promotes. " +
+        "Only ads in your observed history are accessible. A found ad with a null transcript is not yet transcribed; check jobStatus.",
+      inputSchema: getAdTranscriptInputSchema,
       outputSchema: getAdTranscriptOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async ({ adVideoId }) => result(async () => ({
-      adVideoId,
-      ...(await getAdTranscript(store, adVideoId) ?? {
+    async ({ adId, adVideoId }) => result(async () => {
+      const lookup = adId !== undefined ? { adId } : { adVideoId: adVideoId! };
+      const ad = await getAdTranscript(store, userId, lookup);
+      return ad ? { status: "found", ...ad } : {
+        status: "not_found",
+        adId: adId ?? null,
+        adVideoId: adVideoId ?? null,
+        source: null,
         transcript: null,
         transcriptLanguage: null,
         transcriptionModel: null,
         transcribedAt: null,
         jobStatus: null,
-      }),
-    })),
+      };
+    }),
+  );
+
+  server.registerTool(
+    "get_ad_transcripts",
+    {
+      description:
+        "Read full transcripts and transcription metadata for 1–50 ad IDs from search_ad_impressions or get_advertiser_overview. " +
+        "Use to compare or summarize multiple ads in one call. Returns one result per ID in input order, including duplicates. " +
+        "Only ads in your observed history are accessible; missing or inaccessible IDs return not_found. " +
+        "A found ad with a null transcript is not yet transcribed; check jobStatus.",
+      inputSchema: getAdTranscriptsInputSchema,
+      outputSchema: getAdTranscriptsOutputSchema,
+      annotations: { ...READ_ONLY_ANNOTATIONS },
+    },
+    async ({ adIds }) => result(async () => ({ transcripts: await getAdTranscripts(store, userId, adIds) })),
   );
 
   return server;
