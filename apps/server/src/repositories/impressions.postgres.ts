@@ -26,7 +26,7 @@ export interface AdvertiserStatsFilters {
 
 export type CompactImpression = Omit<
   typeof adImpressions.$inferSelect,
-  "id" | "rawJson" | "userId" | "userId"
+  "id" | "rawJson" | "userId"
 >;
 
 export interface AdvertiserStatRow {
@@ -51,18 +51,34 @@ const OVERVIEW_RECENT_LIMIT = 10;
 const MAX_LIMIT = 100;
 
 function clampLimit(limit: number | undefined, fallback: number): number {
-  if (limit === undefined) return fallback;
-  if (!Number.isFinite(limit)) return fallback;
-  return Math.min(Math.max(Math.floor(limit), 1), MAX_LIMIT);
+  if (limit === undefined) {
+    return fallback;
+  }
+  if (!Number.isFinite(limit)) {
+    return fallback;
+  }
+  const floored = Math.floor(limit);
+  if (floored < 1) {
+    return 1;
+  }
+  if (floored > MAX_LIMIT) {
+    return MAX_LIMIT;
+  }
+  return floored;
 }
 
 function contains(column: PgColumn, term: string) {
   return sql`strpos(lower(${column}), lower(${term})) > 0`;
 }
 
-function advertiserConditions(advertiser: string) {
+function advertiserConditions(advertiser: string | undefined) {
+  if (advertiser === undefined) {
+    return undefined;
+  }
   const needle = advertiser.trim();
-  if (!needle) return undefined;
+  if (needle === "") {
+    return undefined;
+  }
   return or(
     contains(adImpressions.advertiserName, needle),
     contains(adImpressions.advertiserDomain, needle),
@@ -71,14 +87,23 @@ function advertiserConditions(advertiser: string) {
 
 function dateConditions(from?: string, to?: string) {
   const conditions = [];
-  if (from !== undefined) conditions.push(gte(adImpressions.startedAt, from));
-  if (to !== undefined) conditions.push(lte(adImpressions.startedAt, to));
+  if (from !== undefined) {
+    conditions.push(gte(adImpressions.startedAt, from));
+  }
+  if (to !== undefined) {
+    conditions.push(lte(adImpressions.startedAt, to));
+  }
   return conditions;
 }
 
-function termCondition(terms: string[]) {
+function termCondition(terms: string[] | undefined) {
+  if (terms === undefined) {
+    return undefined;
+  }
   const needles = terms.map((term) => term.trim()).filter((term) => term.length > 0);
-  if (needles.length === 0) return undefined;
+  if (needles.length === 0) {
+    return undefined;
+  }
   return or(
     ...needles.flatMap((needle) => [
       contains(adImpressions.advertiserName, needle),
@@ -190,39 +215,46 @@ export async function insertImpression(
 
   // Transcribe an ad once, not per impression. Upsert the canonical ad row
   // and ensure a single pending job exists. Idempotent via ON CONFLICT.
+  // Enrichment must never fail ingestion of the impression itself.
   const adVideoId = record.adVideoId?.trim();
   if (adVideoId) {
-    try {
-      const [adRow] = await db
-        .insert(ads)
-        .values({ source: "youtube", sourceAdId: adVideoId })
-        .onConflictDoUpdate({
-          target: [ads.source, ads.sourceAdId],
-          set: { updatedAt: new Date() },
-        })
-        .returning({ id: ads.id, transcript: ads.transcript });
-      if (adRow) {
-        await db
-          .update(adImpressions)
-          .set({ adId: adRow.id })
-          .where(and(eq(adImpressions.userId, userId), eq(adImpressions.eventId, record.event_id)));
-        if (adRow.transcript == null) {
-          await db
-            .insert(transcriptionJobs)
-            .values({ adId: adRow.id, status: "pending" })
-            .onConflictDoNothing({ target: [transcriptionJobs.adId] });
-        }
-      }
-    } catch (error) {
-      // Ads/jobs enrichment must never fail ingestion of the impression itself.
-      console.warn(`[ingest] ad enrichment failed event_id=${record.event_id}: ${error instanceof Error ? error.message : error}`);
-    }
+    await enrichAd(db, userId, record.event_id, adVideoId).catch(() => undefined);
   }
 
-  return {
-    status: rows.length > 0 ? "inserted" : "duplicate",
-    eventId: record.event_id,
-  };
+  if (rows.length > 0) {
+    return { status: "inserted", eventId: record.event_id };
+  }
+  return { status: "duplicate", eventId: record.event_id };
+}
+
+async function enrichAd(
+  db: PostgresDatabaseClient,
+  userId: string,
+  eventId: string,
+  adVideoId: string,
+): Promise<void> {
+  const [adRow] = await db
+    .insert(ads)
+    .values({ source: "youtube", sourceAdId: adVideoId })
+    .onConflictDoUpdate({
+      target: [ads.source, ads.sourceAdId],
+      set: { updatedAt: new Date() },
+    })
+    .returning({ id: ads.id, transcript: ads.transcript });
+  if (!adRow) {
+    return;
+  }
+  await db
+    .update(adImpressions)
+    .set({ adId: adRow.id })
+    .where(and(eq(adImpressions.userId, userId), eq(adImpressions.eventId, eventId)));
+  if (adRow.transcript !== null) {
+    return;
+  }
+  await db
+    .insert(transcriptionJobs)
+    .values({ adId: adRow.id, status: "pending" })
+    .onConflictDoNothing({ target: [transcriptionJobs.adId] });
 }
 
 export async function searchImpressions(
@@ -233,18 +265,27 @@ export async function searchImpressions(
   const conditions = [
     eq(adImpressions.userId, requireUserId(userId)),
     ...dateConditions(filters.from, filters.to),
-    ...(filters.skipped === undefined ? [] : [eq(adImpressions.skipped, filters.skipped)]),
   ];
+  if (filters.skipped !== undefined) {
+    conditions.push(eq(adImpressions.skipped, filters.skipped));
+  }
   if (filters.before) {
-    conditions.push(or(
+    const cursor = or(
       lt(adImpressions.startedAt, filters.before.startedAt),
       and(eq(adImpressions.startedAt, filters.before.startedAt), lt(adImpressions.eventId, filters.before.eventId)),
-    )!);
+    );
+    if (cursor) {
+      conditions.push(cursor);
+    }
   }
-  const advertiser = filters.advertiser === undefined ? undefined : advertiserConditions(filters.advertiser);
-  if (advertiser) conditions.push(advertiser);
-  const terms = filters.terms === undefined ? undefined : termCondition(filters.terms);
-  if (terms) conditions.push(terms);
+  const advertiser = advertiserConditions(filters.advertiser);
+  if (advertiser) {
+    conditions.push(advertiser);
+  }
+  const terms = termCondition(filters.terms);
+  if (terms) {
+    conditions.push(terms);
+  }
 
   return db
     .select(compactColumns)
@@ -260,8 +301,10 @@ export async function getAdvertiserStats(
   filters: AdvertiserStatsFilters = {},
 ): Promise<AdvertiserStatRow[]> {
   const conditions = [eq(adImpressions.userId, requireUserId(userId)), ...dateConditions(filters.from, filters.to)];
-  const advertiser = filters.advertiser === undefined ? undefined : advertiserConditions(filters.advertiser);
-  if (advertiser) conditions.push(advertiser);
+  const advertiser = advertiserConditions(filters.advertiser);
+  if (advertiser) {
+    conditions.push(advertiser);
+  }
 
   const rows = await db
     .select({

@@ -4,6 +4,19 @@ Async local Whisper transcription for captured YouTube ads. Runs as a short-live
 batch: boot, claim N pending jobs, transcribe each unique `ad_video_id` once,
 persist the full transcript to `ads`, mark `transcription_jobs` completed, exit.
 
+Each job first downloads audio with `yt-dlp` and transcribes it with Whisper.
+If downloading or transcription fails (including an empty transcript), the worker
+tries `youtube-transcript-api` for existing captions in `WHISPER_LANGUAGE`.
+Caption results use `youtube-captions:auto` or `youtube-captions:manual` in
+`transcription_model`; Whisper results keep the configured model name.
+If both paths fail, the job is marked failed with both errors. Cloud IP blocking
+can affect both paths. Caption requests have 10-second connect and 30-second read
+timeouts. Model loading remains a batch prerequisite.
+
+The GitHub Actions workflow installs this dependency from `pyproject.toml`;
+no additional credentials are needed. Only pending jobs are claimed, so previously
+failed jobs are not automatically retried by this change.
+
 ## Layout
 
 ```text
@@ -49,6 +62,5 @@ brew install ffmpeg
 /opt/homebrew/bin/python3.13 -m pytest workers/transcription/tests -v
 ```
 
-Unit tests mock `yt-dlp`/`faster-whisper` and use SQL-level fakes for
-claim/complete/fail paths. DB integration tests are skipped unless
-`DATABASE_URL` is set.
+Unit tests mock audio and caption retrieval and use SQL-level fakes for
+claim/complete/fail paths. They do not contact YouTube or the database.

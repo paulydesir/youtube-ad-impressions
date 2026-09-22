@@ -61,8 +61,7 @@ test("cold worker without a popup or DOM restores session and POSTs a content-sc
   const beforeTelemetry = logs.length;
   adRequestListener({ url: "https://www.youtube.com/api/stats/ads?content_v=B3eciVIAwPs" });
   adRequestListener({ url: "https://www.youtube.com/api/stats/ads?ad_v=" });
-  assert.equal(logs.length, beforeTelemetry + 1, "missing IDs produce only one diagnostic per worker");
-  assert.match(logs.at(-1)[0], /no ad_v/);
+  assert.equal(logs.length, beforeTelemetry, "missing IDs stay quiet");
   adRequestListener({ tabId: 42, url: "https://www.youtube.com/api/stats/ads?content_v=B3eciVIAwPs&ad_v=c60usiz-Z34" });
   assert.equal(deliveries.length, 1);
   assert.equal(deliveries[0][0], 42);
@@ -70,7 +69,6 @@ test("cold worker without a popup or DOM restores session and POSTs a content-sc
   assert.equal(deliveries[0][2].frameId, 0);
   adRequestListener({ tabId: -1, url: "https://www.youtube.com/api/stats/ads?ad_v=ignored" });
   assert.equal(deliveries.length, 1);
-  assert.equal(logs.some(args => args[0] === "[YouTube Ad] video ID:" && args[1] === "c60usiz-Z34"), true);
   const record = { ...sampleImpression(), adVideoId: "c60usiz-Z34" };
   const send = () => new Promise(resolve => {
     assert.equal(listener({ type: "record-impression", record }, { tab: { id: 1 } }, resolve), true);

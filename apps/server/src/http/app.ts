@@ -20,7 +20,6 @@ export interface AppOptions {
   mcpAuth?: McpAuthOptions;
   consent?: ConsentOptions;
   requestLog?: (message: string) => void;
-  log?: (message: string) => void;
 }
 
 // Malformed JSON bodies must produce a stable JSON error, not Express's
@@ -31,37 +30,46 @@ const jsonErrorHandler: ErrorRequestHandler = (
   res: Response,
   next: NextFunction,
 ): void => {
-  if (
-    error instanceof SyntaxError &&
-    "status" in error &&
-    error.status === 400 &&
-    "type" in error &&
-    error.type === "entity.parse.failed"
-  ) {
+  if (isJsonParseError(error)) {
     res.status(400).json({ error: "invalid_json", message: "Request body is not valid JSON." });
     return;
   }
   next(error);
 };
 
+function isJsonParseError(error: unknown): boolean {
+  return (
+    error instanceof SyntaxError &&
+    "status" in error &&
+    error.status === 400 &&
+    "type" in error &&
+    error.type === "entity.parse.failed"
+  );
+}
+
 export function createApp(options: AppOptions): Express {
   const app = express();
   app.disable("x-powered-by");
+
   if (options.requestLog) {
+    const requestLog = options.requestLog;
     app.use((req, res, next) => {
       const startedAt = performance.now();
       res.on("finish", () => {
         const durationMs = Math.round(performance.now() - startedAt);
-        options.requestLog?.(
-          `${req.method} ${req.path} ${res.statusCode} ${durationMs}ms`,
-        );
+        requestLog(`${req.method} ${req.path} ${res.statusCode} ${durationMs}ms`);
       });
       next();
     });
   }
+
   // Authenticate MCP before parsing potentially large bodies.
-  if (options.mcpAuth) app.use(createMcpMetadataRouter(options.mcpAuth));
-  if (options.consent) app.use("/oauth", createConsentRouter(options.consent));
+  if (options.mcpAuth) {
+    app.use(createMcpMetadataRouter(options.mcpAuth));
+  }
+  if (options.consent) {
+    app.use("/oauth", createConsentRouter(options.consent));
+  }
   app.use("/mcp", requireMcpAuth(options.mcpAuth));
   // 500 records of ~1KB each fit comfortably; the default 100kb would not.
   app.use(express.json({ limit: "5mb" }));
@@ -75,13 +83,16 @@ export function createApp(options: AppOptions): Express {
   });
 
   app.get("/me", requireSupabaseAuth(options.verifyAccessToken), (req, res) => {
-    const auth = (req as AuthenticatedRequest).auth!;
+    const auth = (req as AuthenticatedRequest).auth;
+    if (!auth) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
     res.json({ id: auth.userId, email: auth.email });
   });
 
-  app.use("/api/v1/impressions", createImpressionsRouter(options.store, options.verifyAccessToken, options.log));
-
-  app.use("/mcp", createMcpRouter(options.store, options.log));
+  app.use("/api/v1/impressions", createImpressionsRouter(options.store, options.verifyAccessToken));
+  app.use("/mcp", createMcpRouter(options.store));
 
   app.use((_req, res) => {
     res.status(404).json({ error: "not_found" });

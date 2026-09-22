@@ -1,116 +1,251 @@
-import type { AdImpressionRecord } from "../types.ts";
 import type { AdImpressionV1 } from "@ad-impressions/contracts";
 import { toAdImpressionV1 } from "../api/impression-mapper.ts";
+import type { AdImpressionRecord } from "../types.ts";
 
 export interface ImpressionStore {
   addImpression(record: AdImpressionRecord): Promise<string>;
   getImpressions(): Promise<AdImpressionRecord[]>;
 }
 
-type Fetch = typeof globalThis.fetch;
+type FetchFn = typeof globalThis.fetch;
 type ServerRow = Record<string, unknown>;
 
-function fromServer(row: ServerRow): AdImpressionRecord {
+interface HistoryPage {
+  records: ServerRow[];
+  nextCursor?: string | null;
+}
+
+interface ServerImpressionStoreOptions {
+  endpoint: string;
+  getToken: () => Promise<string | null>;
+  fetch?: FetchFn;
+  timeoutMs?: number;
+  onError?: (message: string) => void;
+  error?: (message: string, detail?: unknown) => void;
+  info?: (message: string, detail?: unknown) => void;
+}
+
+// Stay below Chrome's 30-second service-worker fetch response limit.
+const DEFAULT_TIMEOUT_MS = 25_000;
+const PAGE_SIZE = 100;
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
+function toRecord(row: ServerRow): AdImpressionRecord {
   return {
-    event_id: String(row.eventId), pod_id: String(row.podId ?? ""),
-    advertiser_name: row.advertiserName as string | null,
-    advertiser_url: row.advertiserDomain as string | null,
-    host_video_id: row.hostVideoId as string | null,
-    timestamp: String(row.startedAt), ended_at: String(row.endedAt ?? row.startedAt),
-    duration_ms: row.durationMs as number | null,
-    pod_position: row.podLabel as string | null,
-    pod_index: row.podPosition as number | null, pod_size: row.podSize as number | null,
-    impression_index: Number(row.podImpressionIndex ?? 0), skipped: Boolean(row.skipped),
-    skip_clicked_at: row.skipClickedAt as string | null, skip_available: false,
-    ad_headline: row.adHeadline as string | null, call_to_action: row.callToAction as string | null,
-    creative_title: row.creativeTitle as string | null,
-    creative_duration_ms: row.creativeDurationMs as number | null,
-    muted: null, playback_rate: null, avatar_url: null, player_version: null,
+    event_id: String(row.eventId),
+    pod_id: String(row.podId ?? ""),
+    advertiser_name: (row.advertiserName as string | null) ?? null,
+    advertiser_url: (row.advertiserDomain as string | null) ?? null,
+    host_video_id: (row.hostVideoId as string | null) ?? null,
+    timestamp: String(row.startedAt),
+    ended_at: String(row.endedAt ?? row.startedAt),
+    duration_ms: (row.durationMs as number | null) ?? null,
+    pod_position: (row.podLabel as string | null) ?? null,
+    pod_index: (row.podPosition as number | null) ?? null,
+    pod_size: (row.podSize as number | null) ?? null,
+    impression_index: Number(row.podImpressionIndex ?? 0),
+    skipped: Boolean(row.skipped),
+    skip_clicked_at: (row.skipClickedAt as string | null) ?? null,
+    skip_available: false,
+    ad_headline: (row.adHeadline as string | null) ?? null,
+    call_to_action: (row.callToAction as string | null) ?? null,
+    creative_title: (row.creativeTitle as string | null) ?? null,
+    creative_duration_ms: (row.creativeDurationMs as number | null) ?? null,
+    muted: null,
+    playback_rate: null,
+    avatar_url: null,
+    player_version: null,
     end_reason: String(row.endReason ?? "unknown"),
   };
 }
 
-export function createServerImpressionStore(options: {
-  endpoint: string;
-  getToken: () => Promise<string | null>;
-  fetch?: Fetch;
-  timeoutMs?: number;
-  info?: (message: string, detail?: unknown) => void;
-  error?: (message: string, detail?: unknown) => void;
-}): ImpressionStore {
+function failureName(failure: unknown): string {
+  if (typeof failure === "object" && failure !== null && "name" in failure) {
+    return String(failure.name);
+  }
+  return "Error";
+}
+
+function failureMessage(failure: unknown): string {
+  if (failure instanceof Error) {
+    return failure.message;
+  }
+  return String(failure);
+}
+
+function isTimeout(failure: unknown): boolean {
+  return failureName(failure) === "TimeoutError";
+}
+
+function isConnectionFailure(failure: unknown): boolean {
+  return failureName(failure) === "TypeError";
+}
+
+function isRetryableNetworkFailure(failure: unknown): boolean {
+  return isTimeout(failure) || isConnectionFailure(failure);
+}
+
+function isStatusError(failure: unknown): boolean {
+  const message = failureMessage(failure);
+  return message.includes("session was rejected") || message.startsWith("Server returned HTTP");
+}
+
+function toUserMessage(endpoint: string, timeoutMs: number, failure: unknown): string {
+  const origin = new URL(endpoint).origin;
+  const detail = failureMessage(failure);
+
+  if (isTimeout(failure)) {
+    return `The server at ${origin} did not respond within ${timeoutMs / 1000} seconds. It may be starting up; retry shortly.`;
+  }
+  if (isConnectionFailure(failure)) {
+    return `Could not connect to the server at ${origin}: ${detail}`;
+  }
+  return `${failureName(failure)}: ${detail}`;
+}
+
+export function createServerImpressionStore(options: ServerImpressionStoreOptions): ImpressionStore {
   const fetchRequest = options.fetch ?? globalThis.fetch;
-  const error = options.error ?? ((message, detail) => console.error(message, detail ?? ""));
-  // Stay below Chrome's 30-second service-worker fetch response limit.
-  const timeoutMs = options.timeoutMs ?? 25_000;
-  async function request<T>(path = "", init?: RequestInit): Promise<T> {
-    const method = init?.method ?? "GET";
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  function reportError(message: string): void {
+    options.onError?.(message);
+    options.error?.(message);
+  }
+
+  function fail(method: string, url: string, failure: unknown): never {
+    const message = toUserMessage(options.endpoint, timeoutMs, failure);
+    reportError(`[YouTube Ad Impressions] ${method} ${url} failed: ${message}`);
+    throw new Error(message, { cause: failure });
+  }
+
+  function requireOk(response: Response): void {
+    if (response.status === 401) {
+      throw new Error("Your session was rejected (HTTP 401). Please log in again.");
+    }
+    if (!response.ok) {
+      throw new Error(`Server returned HTTP ${response.status} ${response.statusText}.`);
+    }
+  }
+
+  // A timed-out POST may already have committed server-side, so network
+  // failures retry once with the same serialized body. The server dedupes
+  // by event ID. Only the final failure is reported.
+  async function request<T>(method: string, path: string, init?: RequestInit): Promise<T> {
     const url = `${options.endpoint}${path}`;
     const token = await options.getToken();
-    if (!token) {
-      error(`[YouTube Ad Impressions] ${method} ${url} not sent: no authenticated session`);
+    if (token === null || token === "") {
       throw new Error("Sign in to your account to load and save impressions.");
     }
-    const startedAt = performance.now();
-    // Retry once with the same serialized body/event ID. A timed-out POST may
-    // already have committed; the server treats that event ID as a duplicate.
-    for (let attempt = 0; ; attempt += 1) {
-      let retryable = false;
-      try {
-        const response = await fetchRequest(url, {
-          ...init,
-          signal: AbortSignal.timeout(timeoutMs),
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init?.headers },
-        });
-        if (!response.ok) {
-          retryable = [502, 503, 504].includes(response.status);
-          if (response.status === 401) {
-            throw new Error("Your session was rejected (HTTP 401). Please log in again.");
-          }
-          throw new Error(`Server returned HTTP ${response.status} ${response.statusText}.`);
+
+    async function attempt(): Promise<Response> {
+      return fetchRequest(url, {
+        ...init,
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          ...init?.headers,
+        },
+      });
+    }
+
+    let response = await tryAttempt(attempt, method, url, true);
+
+    if (RETRYABLE_STATUSES.has(response.status)) {
+      response = await tryAttempt(attempt, method, url, false);
+    }
+
+    return readWithOneRetry<T>(method, url, response, attempt);
+  }
+
+  async function tryAttempt(
+    attempt: () => Promise<Response>,
+    method: string,
+    url: string,
+    allowRetry: boolean,
+  ): Promise<Response> {
+    try {
+      return await attempt();
+    } catch (failure) {
+      if (allowRetry && isRetryableNetworkFailure(failure)) {
+        try {
+          return await attempt();
+        } catch (retryFailure) {
+          fail(method, url, retryFailure);
         }
-        // Keep body reads inside the timeout/error handling too.
-        return await response.json() as T;
-      } catch (failure) {
-        const name = failure && typeof failure === "object" && "name" in failure ? String(failure.name) : "Error";
-        if (attempt === 0 && (retryable || name === "TimeoutError" || name === "TypeError")) continue;
-        const detail = failure && typeof failure === "object" && "message" in failure ? String(failure.message) : String(failure);
-        const origin = new URL(options.endpoint).origin;
-        const message = name === "TimeoutError"
-          ? `The server at ${origin} did not respond within ${timeoutMs / 1000} seconds. It may be starting up; retry shortly.`
-          : name === "TypeError"
-            ? `Could not connect to the server at ${origin}: ${detail}`
-            : `${name}: ${detail}`;
-        error(`[YouTube Ad Impressions] ${method} ${url} failed after ${Math.round(performance.now() - startedAt)}ms: ${message}`);
-        throw new Error(message, { cause: failure });
+      }
+      fail(method, url, failure);
+    }
+  }
+
+  async function readWithOneRetry<T>(
+    method: string,
+    url: string,
+    response: Response,
+    attempt: () => Promise<Response>,
+  ): Promise<T> {
+    try {
+      requireOk(response);
+      return (await response.json()) as T;
+    } catch (failure) {
+      if (isStatusError(failure)) {
+        throw failure;
+      }
+      if (!isRetryableNetworkFailure(failure)) {
+        fail(method, url, failure);
+      }
+      const retryResponse = await tryAttempt(attempt, method, url, false);
+      try {
+        requireOk(retryResponse);
+        return (await retryResponse.json()) as T;
+      } catch (retryFailure) {
+        if (isStatusError(retryFailure)) {
+          throw retryFailure;
+        }
+        fail(method, url, retryFailure);
       }
     }
   }
-  return {
-    addImpression: async (record) => {
-      const canonical: AdImpressionV1 = await toAdImpressionV1(record);
-      const body = await request<{ event_id: string }>("", { method: "POST", body: JSON.stringify(canonical) });
-      return body.event_id;
-    },
-    getImpressions: async () => {
-      const records: AdImpressionRecord[] = [];
-      let cursor: string | null = null;
-      const visited = new Set<string>();
-      do {
-        const path: string = `?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-        const body = await request<{ records: ServerRow[]; nextCursor?: string | null }>(path);
-        // Older servers silently truncate history. Do not display that page as
-        // a lifetime total while the API update is waiting to be deployed.
-        if (body.nextCursor === undefined && body.records.length >= 100) {
-          throw new Error("The server needs the history pagination update to load more than 100 impressions.");
-        }
-        records.push(...body.records.map(fromServer));
-        cursor = body.nextCursor ?? null;
-        if (cursor) {
-          if (visited.has(cursor)) throw new Error("The server returned a repeated history cursor.");
-          visited.add(cursor);
-        }
-      } while (cursor);
-      return records;
-    },
-  };
+
+  async function addImpression(record: AdImpressionRecord): Promise<string> {
+    const canonical: AdImpressionV1 = await toAdImpressionV1(record);
+    const body = await request<{ event_id: string }>("POST", "", {
+      method: "POST",
+      body: JSON.stringify(canonical),
+    });
+    return body.event_id;
+  }
+
+  async function getImpressions(): Promise<AdImpressionRecord[]> {
+    const records: AdImpressionRecord[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+
+    while (true) {
+      let path = `?limit=${PAGE_SIZE}`;
+      if (cursor !== null) {
+        path += `&cursor=${encodeURIComponent(cursor)}`;
+      }
+      const page = await request<HistoryPage>("GET", path);
+
+      if (page.nextCursor === undefined && page.records.length >= PAGE_SIZE) {
+        throw new Error("The server needs the history pagination update to load more than 100 impressions.");
+      }
+
+      for (const row of page.records) {
+        records.push(toRecord(row));
+      }
+
+      if (page.nextCursor === undefined || page.nextCursor === null) {
+        return records;
+      }
+      if (seenCursors.has(page.nextCursor)) {
+        throw new Error("The server returned a repeated history cursor.");
+      }
+      seenCursors.add(page.nextCursor);
+      cursor = page.nextCursor;
+    }
+  }
+
+  return { addImpression, getImpressions };
 }

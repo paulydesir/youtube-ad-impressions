@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useAuth } from "../src/auth/AuthProvider.tsx";
 import { supabase } from "../src/auth/supabase.ts";
 import { createAuthApiClient } from "../src/api/auth-api-client.ts";
+
 const api = createAuthApiClient(supabase);
 export function AuthPanel() {
   const auth = useAuth();

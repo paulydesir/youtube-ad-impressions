@@ -27,15 +27,13 @@ const READ_ONLY_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
-export function createMcpServer(store: ImpressionStore, userId: string, log: (message: string) => void = console.info): McpServer {
+export function createMcpServer(store: ImpressionStore, userId: string): McpServer {
   requireUserId(userId);
-  async function result(name: string, query: () => Promise<Record<string, unknown>>) {
+  async function result(query: () => Promise<Record<string, unknown>>) {
     try {
       const structuredContent = await query();
-      log(`MCP tool=${name} outcome=success`);
       return { structuredContent, content: [{ type: "text" as const, text: JSON.stringify(structuredContent) }] };
     } catch {
-      log(`MCP tool=${name} outcome=error`);
       return { isError: true, content: [{ type: "text" as const, text: "Unable to load impressions. Please try again." }] };
     }
   }
@@ -55,7 +53,7 @@ export function createMcpServer(store: ImpressionStore, userId: string, log: (me
       outputSchema: searchAdImpressionsOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async filters => result("search_ad_impressions", async () => ({ impressions: await searchImpressions(store, userId, filters) })),
+    async filters => result(async () => ({ impressions: await searchImpressions(store, userId, filters) })),
   );
 
   server.registerTool(
@@ -69,7 +67,7 @@ export function createMcpServer(store: ImpressionStore, userId: string, log: (me
       outputSchema: getAdvertiserStatsOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async filters => result("get_advertiser_stats", async () => ({ stats: await getAdvertiserStats(store, userId, filters) })),
+    async filters => result(async () => ({ stats: await getAdvertiserStats(store, userId, filters) })),
   );
 
   server.registerTool(
@@ -83,7 +81,7 @@ export function createMcpServer(store: ImpressionStore, userId: string, log: (me
       outputSchema: getAdvertiserOverviewOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async ({ advertiser }) => result("get_advertiser_overview", async () => ({ ...await getAdvertiserOverview(store, userId, advertiser) })),
+    async ({ advertiser }) => result(async () => ({ ...await getAdvertiserOverview(store, userId, advertiser) })),
   );
 
   server.registerTool(
@@ -96,7 +94,7 @@ export function createMcpServer(store: ImpressionStore, userId: string, log: (me
       outputSchema: getAdTranscriptOutputSchema,
       annotations: { ...READ_ONLY_ANNOTATIONS },
     },
-    async ({ adVideoId }) => result("get_ad_transcript", async () => ({
+    async ({ adVideoId }) => result(async () => ({
       adVideoId,
       ...(await getAdTranscript(store, adVideoId) ?? {
         transcript: null,

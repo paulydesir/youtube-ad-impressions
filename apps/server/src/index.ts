@@ -9,34 +9,32 @@ import { createMcpTokenVerifier } from "./mcp/auth.js";
 
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+function reportFatal(error: unknown): never {
+  // eslint-disable-next-line no-console -- startup failures must be visible
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
+
 async function main(): Promise<void> {
-  let config;
+  let config: ReturnType<typeof loadConfig>;
   try {
     const appEnvironment = loadRuntimeEnvironment(serverDir);
     config = loadConfig({ ...process.env, APP_ENV: appEnvironment });
   } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
+    reportFatal(error);
   }
 
-  let database;
+  let database: Awaited<ReturnType<typeof openDatabase>>;
   try {
     database = await openDatabase(config);
   } catch (error) {
-    console.error(
-      `Failed to open PostgreSQL database (DATABASE_URL): ${error instanceof Error ? error.message : error}`,
-    );
-    process.exit(1);
+    reportFatal(`Failed to open PostgreSQL database (DATABASE_URL): ${error instanceof Error ? error.message : error}`);
   }
 
-  console.info(`Opened ${database.kind} database: ${database.label}`);
-  console.info(`Runtime environment: ${config.APP_ENV}`);
-  console.info(`Database ready: ${await database.isReady()}`);
-
-  const verbose = config.LOG_LEVEL === "debug" || config.LOG_LEVEL === "info";
   const app = createApp({
     verifyAccessToken: config.SUPABASE_PUBLISHABLE_KEY
-      ? createTokenVerifier(config.SUPABASE_URL) : undefined,
+      ? createTokenVerifier(config.SUPABASE_URL)
+      : undefined,
     store: database.store,
     isDatabaseReady: () => database.isReady(),
     mcpAuth: {
@@ -44,41 +42,28 @@ async function main(): Promise<void> {
       supabaseUrl: config.SUPABASE_URL,
       verifyAccessToken: createMcpTokenVerifier(config.SUPABASE_URL, config.MCP_RESOURCE_URL),
     },
-    consent: config.SUPABASE_PUBLISHABLE_KEY ? {
-      supabaseUrl: config.SUPABASE_URL,
-      publishableKey: config.SUPABASE_PUBLISHABLE_KEY,
-    } : undefined,
-    requestLog: verbose
-      ? (message) => console.info(`[Ad Impressions Server] ${message}`)
+    consent: config.SUPABASE_PUBLISHABLE_KEY
+      ? { supabaseUrl: config.SUPABASE_URL, publishableKey: config.SUPABASE_PUBLISHABLE_KEY }
       : undefined,
-    log: verbose ? (message) => console.info(`[Ad Impressions Server] ${message}`) : undefined,
-  });
-  const server = app.listen(config.PORT, config.HOST, () => {
-    console.info(
-      `Listening on http://${config.HOST}:${config.PORT} (${database.kind}: ${database.label})`,
-    );
-  });
-  server.on("error", (error: NodeJS.ErrnoException) => {
-    console.error(`Failed to listen on ${config.HOST}:${config.PORT}: ${error.message}`);
-    process.exit(1);
+    requestLog: config.LOG_LEVEL === "debug" ? (message) => {
+      // eslint-disable-next-line no-console -- debug-only request log
+      console.info(`[Ad Impressions Server] ${message}`);
+    } : undefined,
   });
 
-  const shutdown = (signal: string) => {
-    console.info(`Received ${signal}, closing database...`);
+  const server = app.listen(config.PORT, config.HOST);
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    reportFatal(`Failed to listen on ${config.HOST}:${config.PORT}: ${error.message}`);
+  });
+
+  function shutdown(): void {
     void database
       .close()
-      .catch((error: unknown) => {
-        console.error(
-          `Error closing database: ${error instanceof Error ? error.message : error}`,
-        );
-      })
+      .catch(() => undefined)
       .finally(() => process.exit(0));
-  };
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  }
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
-void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+void main().catch(reportFatal);
