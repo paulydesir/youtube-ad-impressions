@@ -1,5 +1,6 @@
 import type { AdImpressionV1 } from "@ad-impressions/contracts";
 import {
+  type AdTranscript,
   type AdvertiserOverviewData,
   type AdvertiserStatRow,
   type AdvertiserStatsFilters,
@@ -9,6 +10,7 @@ import {
 } from "./impressions.postgres.js";
 import type { PostgresDatabaseClient } from "../db/postgres/client.js";
 import {
+  getAdTranscript as postgresTranscript,
   getAdvertiserOverviewData as postgresOverview,
   getAdvertiserStats as postgresStats,
   insertImpression as postgresInsert,
@@ -16,6 +18,7 @@ import {
 } from "./impressions.postgres.js";
 
 export type {
+  AdTranscript,
   AdvertiserOverviewData,
   AdvertiserStatRow,
   AdvertiserStatsFilters,
@@ -34,6 +37,7 @@ export interface ImpressionStore {
   searchImpressions(userId: string, filters?: ImpressionFilters): Promise<CompactImpression[]>;
   getAdvertiserStats(userId: string, filters?: AdvertiserStatsFilters): Promise<AdvertiserStatRow[]>;
   getAdvertiserOverviewData(userId: string, resolvedAdvertiser: string): Promise<AdvertiserOverviewData>;
+  getAdTranscript(adVideoId: string): Promise<AdTranscript | null>;
 }
 
 export function createPostgresStore(db: PostgresDatabaseClient): ImpressionStore {
@@ -44,5 +48,6 @@ export function createPostgresStore(db: PostgresDatabaseClient): ImpressionStore
     getAdvertiserStats: (userId, filters) => postgresStats(db, userId, filters),
     getAdvertiserOverviewData: (userId, resolvedAdvertiser) =>
       postgresOverview(db, userId, resolvedAdvertiser),
+    getAdTranscript: (adVideoId) => postgresTranscript(db, adVideoId),
   };
 }

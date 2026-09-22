@@ -131,6 +131,8 @@ const impressionSchema = z.object({
   endedAt: z.string().nullable(),
   durationMs: z.number().nullable(),
   hostVideoId: z.string().nullable(),
+  adVideoId: z.string().nullable().optional(),
+  adId: z.string().nullable().optional(),
   advertiserName: z.string().nullable(),
   advertiserDomain: z.string().nullable(),
   adHeadline: z.string().nullable(),
@@ -175,4 +177,21 @@ export const getAdvertiserOverviewOutputSchema = z.object({
   recent: z.array(impressionSchema),
   headlines: z.array(z.string()),
   creativeTitles: z.array(z.string()),
+});
+
+export const getAdTranscriptInputShape = {
+  adVideoId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("YouTube ad video ID (the source_ad_id for source=youtube)."),
+};
+
+export const getAdTranscriptOutputSchema = z.object({
+  adVideoId: z.string(),
+  transcript: z.string().nullable(),
+  transcriptLanguage: z.string().nullable(),
+  transcriptionModel: z.string().nullable(),
+  transcribedAt: z.string().nullable(),
+  jobStatus: z.string().nullable(),
 });

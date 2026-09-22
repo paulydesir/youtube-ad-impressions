@@ -3,7 +3,7 @@ import type { AdImpressionV1 } from "@ad-impressions/contracts";
 import { and, count, desc, eq, gte, lt, lte, max, min, or, sql, sum } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { PostgresDatabaseClient } from "../db/postgres/client.js";
-import { adImpressions, profiles } from "../db/postgres/schema.js";
+import { adImpressions, ads, profiles, transcriptionJobs } from "../db/postgres/schema.js";
 
 export type InsertStatus = "inserted" | "duplicate";
 
@@ -99,6 +99,7 @@ const compactColumns = {
   durationMs: adImpressions.durationMs,
   hostVideoId: adImpressions.hostVideoId,
   adVideoId: adImpressions.adVideoId,
+  adId: adImpressions.adId,
   advertiserName: adImpressions.advertiserName,
   advertiserDomain: adImpressions.advertiserDomain,
   adHeadline: adImpressions.adHeadline,
@@ -186,6 +187,38 @@ export async function insertImpression(
     })
     .onConflictDoNothing({ target: [adImpressions.userId, adImpressions.eventId] })
     .returning({ eventId: adImpressions.eventId });
+
+  // Transcribe an ad once, not per impression. Upsert the canonical ad row
+  // and ensure a single pending job exists. Idempotent via ON CONFLICT.
+  const adVideoId = record.adVideoId?.trim();
+  if (adVideoId) {
+    try {
+      const [adRow] = await db
+        .insert(ads)
+        .values({ source: "youtube", sourceAdId: adVideoId })
+        .onConflictDoUpdate({
+          target: [ads.source, ads.sourceAdId],
+          set: { updatedAt: new Date() },
+        })
+        .returning({ id: ads.id, transcript: ads.transcript });
+      if (adRow) {
+        await db
+          .update(adImpressions)
+          .set({ adId: adRow.id })
+          .where(and(eq(adImpressions.userId, userId), eq(adImpressions.eventId, record.event_id)));
+        if (adRow.transcript == null) {
+          await db
+            .insert(transcriptionJobs)
+            .values({ adId: adRow.id, status: "pending" })
+            .onConflictDoNothing({ target: [transcriptionJobs.adId] });
+        }
+      }
+    } catch (error) {
+      // Ads/jobs enrichment must never fail ingestion of the impression itself.
+      console.warn(`[ingest] ad enrichment failed event_id=${record.event_id}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
   return {
     status: rows.length > 0 ? "inserted" : "duplicate",
     eventId: record.event_id,
@@ -302,5 +335,45 @@ export async function getAdvertiserOverviewData(
     recent,
     headlines,
     creativeTitles,
+  };
+}
+
+export interface AdTranscript {
+  adVideoId: string;
+  transcript: string | null;
+  transcriptLanguage: string | null;
+  transcriptionModel: string | null;
+  transcribedAt: string | null;
+  jobStatus: string | null;
+}
+
+export async function getAdTranscript(
+  db: PostgresDatabaseClient,
+  adVideoIdParam: string,
+): Promise<AdTranscript | null> {
+  const adVideoId = adVideoIdParam.trim();
+  if (!adVideoId) return null;
+  const rows = await db
+    .select({
+      adVideoId: ads.sourceAdId,
+      transcript: ads.transcript,
+      transcriptLanguage: ads.transcriptLanguage,
+      transcriptionModel: ads.transcriptionModel,
+      transcribedAt: ads.transcribedAt,
+      jobStatus: transcriptionJobs.status,
+    })
+    .from(ads)
+    .leftJoin(transcriptionJobs, eq(transcriptionJobs.adId, ads.id))
+    .where(and(eq(ads.source, "youtube"), eq(ads.sourceAdId, adVideoId)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    adVideoId: row.adVideoId,
+    transcript: row.transcript,
+    transcriptLanguage: row.transcriptLanguage,
+    transcriptionModel: row.transcriptionModel,
+    transcribedAt: row.transcribedAt ? row.transcribedAt.toISOString() : null,
+    jobStatus: row.jobStatus,
   };
 }

@@ -1,4 +1,5 @@
 import type {
+  AdTranscript,
   AdvertiserStatsFilters,
   CompactImpression,
   ImpressionFilters,
@@ -48,6 +49,13 @@ export async function searchImpressions(
   filters: ImpressionFilters = {},
 ): Promise<ImpressionDto[]> {
   return store.searchImpressions(userId, filters);
+}
+
+export async function getAdTranscript(
+  store: ImpressionStore,
+  adVideoId: string,
+): Promise<AdTranscript | null> {
+  return store.getAdTranscript(adVideoId);
 }
 
 export async function getAdvertiserStats(

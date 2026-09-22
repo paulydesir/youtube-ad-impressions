@@ -20,6 +20,7 @@ let app: ReturnType<typeof createApp>;
 const store: ImpressionStore = {
   insertImpression: vi.fn(), searchImpressions: vi.fn(),
   getAdvertiserStats: vi.fn(), getAdvertiserOverviewData: vi.fn(),
+  getAdTranscript: vi.fn(),
 };
 
 async function token(overrides: Record<string, unknown> = {}, badSignature = false) {
