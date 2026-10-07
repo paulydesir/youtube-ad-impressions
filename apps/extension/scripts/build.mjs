@@ -15,7 +15,7 @@ if (!supabaseKey) throw new Error(`Set SUPABASE_PUBLISHABLE_KEY in apps/extensio
 if (supabaseKey.startsWith("sb_secret_") || (supabaseKey.split(".").length === 3 && JSON.parse(Buffer.from(supabaseKey.split(".")[1], "base64url")).role !== "anon")) {
   throw new Error("Extension requires a public anon/publishable key.");
 }
-const dist = join(root, "dist");
+const dist = process.env.ZAP_OUT_DIR || join(root, "dist");
 const shared = {
   bundle: true,
   sourcemap: true,

@@ -1,7 +1,7 @@
 import type { ImpressionAnalytics } from "../src/analytics.ts";
 import type {
   AdImpressionRecord,
-  GetDashboardMessage,
+  ExtensionMessage,
 } from "../src/types.ts";
 
 interface DashboardSuccess {
@@ -25,7 +25,7 @@ export function formatDuration(milliseconds: number): string {
   return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`;
 }
 
-export function sendMessage<T>(message: GetDashboardMessage): Promise<T> {
+export function sendMessage<T>(message: ExtensionMessage): Promise<T> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(message, (response: T | undefined) => {
       const error = chrome.runtime.lastError;

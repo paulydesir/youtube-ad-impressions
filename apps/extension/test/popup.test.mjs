@@ -83,3 +83,45 @@ test("dashboard refresh updates totals beyond 100 and keeps recent history limit
   await waitFor(() => window.document.querySelector("#total-impressions")?.textContent === "117");
   assert.equal(window.document.querySelectorAll("#recent .recent-item").length, 10);
 });
+
+test("manual impression saves and displays the offer in recent history", async t => {
+  let captured;
+  const window = mount(t, (message, callback) => {
+    if (message.type === "record-impression") {
+      captured = message.record;
+      callback({ ok: true, id: captured.event_id });
+    } else callback(dashboard(captured ? [captured] : []));
+  });
+  await waitFor(() => window.document.querySelector("#impression-offer"));
+  window.document.querySelector("#impression-advertiser").value = "Example Bank";
+  window.document.querySelector("#impression-offer").value = "Sign up and get $400";
+  window.document.querySelector("#impression-link").value = "https://bank.example/bonus";
+  window.document.querySelector(".manual-impression form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await waitFor(() => window.document.querySelector("#total-impressions")?.textContent === "1");
+  assert.equal(captured.source, "manual");
+  assert.equal(captured.adVideoId, undefined);
+  assert.equal(window.document.querySelector("#recent .impression-offer").textContent, "Sign up and get $400");
+  assert.equal(window.document.querySelector("#recent a").href, "https://bank.example/bonus");
+  assert.match(window.document.querySelector(".manual-impression").textContent, /Impression saved/);
+});
+
+test("failed manual impression keeps input and reuses its event ID on retry", async t => {
+  const attempts = [];
+  const window = mount(t, (message, callback) => {
+    if (message.type === "record-impression") {
+      attempts.push(message.record);
+      callback({ ok: false, error: "Server unavailable" });
+    } else callback(dashboard([]));
+  });
+  await waitFor(() => window.document.querySelector("#impression-offer"));
+  window.document.querySelector("#impression-advertiser").value = "Bank";
+  const input = window.document.querySelector("#impression-offer");
+  input.value = "Checking bonus";
+  const submit = () => window.document.querySelector(".manual-impression form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  submit();
+  await waitFor(() => window.document.querySelector(".manual-impression [role=alert]"));
+  assert.equal(input.value, "Checking bonus");
+  submit();
+  await waitFor(() => attempts.length === 2);
+  assert.equal(attempts[0].event_id, attempts[1].event_id);
+});

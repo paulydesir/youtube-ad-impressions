@@ -32,6 +32,8 @@ const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 
 function toRecord(row: ServerRow): AdImpressionRecord {
   return {
+    source: row.source === "manual" ? "manual" : "youtube",
+    source_url: (row.sourceUrl as string | null) ?? null,
     event_id: String(row.eventId),
     pod_id: String(row.podId ?? ""),
     advertiser_name: (row.advertiserName as string | null) ?? null,

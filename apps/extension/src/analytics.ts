@@ -1,4 +1,5 @@
 export interface ImpressionInput {
+  source?: "youtube" | "manual";
   advertiser_name?: string | null;
   advertiser_url?: string | null;
   duration_ms?: number | null;
@@ -29,6 +30,7 @@ export function aggregateImpressions(
   const advertisers = new Map<string, AdvertiserSummary>();
   let totalAdMs = 0;
   let skippedCount = 0;
+  const videoCount = records.filter(record => record.source !== "manual").length;
 
   for (const record of records) {
     const durationMs = Number.isFinite(record.duration_ms)
@@ -46,18 +48,18 @@ export function aggregateImpressions(
     current.durationMs += durationMs;
     advertisers.set(advertiser, current);
     totalAdMs += durationMs;
-    if (record.skipped) skippedCount += 1;
+    if (record.source !== "manual" && record.skipped) skippedCount += 1;
   }
 
   return {
     totalImpressions: records.length,
     totalAdMs,
-    averageAdMs: records.length ? Math.round(totalAdMs / records.length) : 0,
+    averageAdMs: videoCount ? Math.round(totalAdMs / videoCount) : 0,
     skippedCount,
-    skipRate: records.length ? skippedCount / records.length : 0,
+    skipRate: videoCount ? skippedCount / videoCount : 0,
     watchTimeMs,
     adsPerWatchHour:
-      watchTimeMs > 0 ? records.length / (watchTimeMs / 3_600_000) : null,
+      watchTimeMs > 0 ? videoCount / (watchTimeMs / 3_600_000) : null,
     advertisers: [...advertisers.values()].sort(
       (a, b) => b.impressions - a.impressions || b.durationMs - a.durationMs,
     ),

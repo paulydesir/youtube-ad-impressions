@@ -24,6 +24,16 @@ Once installed, open the extension and sign in.
 
 Authentication associates the ads captured by the extension with your account.
 
+To record an offer from any source, open the signed-in popup and use **Add
+impression**. Enter the advertiser and offer details, optionally add a source
+link, then select **Save impression**. For example: “Bank — sign up for checking
+and get $400.” It appears in Recent Impressions with a Manual label and counts
+as an impression. No separate ad or transcription job is created. Manual entries
+do not contribute to the popup's video duration, skip rate, or ads-per-watch-hour
+metrics. The server must run the updated shared contract accepting `source:
+"manual"`; no database migration is needed. Hosted use requires deploying the
+updated backend.
+
 #### 2. Use YouTube Normally
 
 Open YouTube and watch videos as usual.
@@ -126,3 +136,58 @@ ChatGPT or another MCP client
 The Chrome extension collects the data, the hosted application stores it, and MCP-compatible clients provide the interface for exploring it.
 
 No local server or database setup is required.
+
+## Switch environments with Zap
+
+From this checkout (Python 3.9+, Node/npm, and Docker Desktop required):
+
+```bash
+./zap dev          # Start the local stack and build the dev extension
+./zap prod         # Build for the hosted backend and stop local services
+./zap stop         # Stop local services without rebuilding
+./zap status       # Show the server Zap manages and its log path
+./zap dev --dry-run
+```
+
+To use `zap` from any directory, add this alias to your shell configuration:
+
+```bash
+alias zap='/absolute/path/to/youtube-ad-impressions/zap'
+```
+
+Zap uses the existing root `.env` (including the Google OAuth secret), server
+`.env` / `.env.development.local`, and extension `.env.production`. Create missing
+files from their examples. Dev rejects non-local database and Supabase URLs and
+gets the extension's public key directly from the running local Supabase stack.
+Production requires explicit hosted HTTPS URLs and a public key in the extension's
+production file. `zap prod` selects the hosted environment; it does not deploy it.
+
+`zap dev` starts Docker Desktop if necessary, starts local Supabase, applies its
+local migrations, starts the Compose Postgres service, runs the server migrations,
+and starts the server in the background. It waits for the server's database health
+check before building the extension. Logs and process state live in `.zap/`.
+Dependencies are installed if the repo-local Supabase CLI is missing. First startup
+can take longer while Docker downloads images.
+
+**One-time Chrome setup:** after the first Zap build, open `chrome://extensions`,
+enable Developer mode, and load `apps/extension` as an unpacked extension (or click
+Reload if that folder is already loaded). Load the extension folder, not `dist`.
+Zap builds include a helper that checks for a completed new build every 30 seconds
+and reloads the extension. Chrome may delay alarms. Normal npm builds do not include
+this helper; reload once manually after returning to Zap from a normal build.
+Refresh existing YouTube tabs after switching so their content scripts also update.
+You may need to sign in again when changing Supabase environments.
+
+Builds are staged before copying into the loaded extension, so a failed build keeps
+the previous extension files. Production builds finish before local services stop.
+Stopping retains database volumes and only stops this project's Supabase/Compose
+services and the server process group started by Zap. Other Docker projects keep
+running. If you already have a manually started server on the same port, stop that
+server once before using `zap dev`.
+
+Checks for Zap itself (no live services required):
+
+```bash
+python3 -m unittest discover -s scripts -p 'test_zap.py'
+node --test scripts/test-zap-reload.mjs
+```

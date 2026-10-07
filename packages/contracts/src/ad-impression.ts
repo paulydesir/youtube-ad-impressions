@@ -3,7 +3,8 @@ import { z } from "zod";
 export const adImpressionV1Schema = z.object({
   schema_version: z.literal(1),
   event_id: z.string().min(1),
-  source: z.literal("youtube"),
+  source: z.enum(["youtube", "manual"]),
+  source_url: z.url({ protocol: /^https?$/ }).max(2048).nullable().optional(),
   adVideoId: z.string().optional(),
   started_at: z.iso.datetime({ offset: true }),
   ended_at: z.iso.datetime({ offset: true }).nullable(),
@@ -29,6 +30,17 @@ export const adImpressionV1Schema = z.object({
   playback_rate: z.number().nullable().optional(),
   avatar_url: z.string().nullable().optional(),
   player_version: z.string().nullable().optional(),
+}).superRefine((record, context) => {
+  if (record.source !== "manual") return;
+  if (!record.advertiser_name?.trim() || record.advertiser_name.length > 200) {
+    context.addIssue({ code: "custom", path: ["advertiser_name"], message: "Enter an advertiser (up to 200 characters)." });
+  }
+  if (!record.ad_headline?.trim() || record.ad_headline.length > 10000) {
+    context.addIssue({ code: "custom", path: ["ad_headline"], message: "Enter offer details (up to 10,000 characters)." });
+  }
+  if (record.adVideoId !== undefined) {
+    context.addIssue({ code: "custom", path: ["adVideoId"], message: "Manual impressions must not create a video ad." });
+  }
 });
 
 export type AdImpressionV1 = z.infer<typeof adImpressionV1Schema>;

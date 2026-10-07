@@ -1,5 +1,7 @@
 
 export interface AdImpressionRecord {
+  source?: "youtube" | "manual";
+  source_url?: string | null;
   adVideoId?: string;
   event_id?: string;
   pod_id?: string;

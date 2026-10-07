@@ -1,4 +1,5 @@
 node_modules/
+.zap/
 dist/
 .DS_Store
 *.log

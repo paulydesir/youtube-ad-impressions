@@ -28,7 +28,7 @@ export interface AdvertiserStatsFilters {
 export type CompactImpression = Omit<
   typeof adImpressions.$inferSelect,
   "id" | "rawJson" | "userId"
->;
+> & { sourceUrl?: string | null };
 
 export interface AdvertiserStatRow {
   advertiser: string;
@@ -120,6 +120,7 @@ const compactColumns = {
   eventId: adImpressions.eventId,
   schemaVersion: adImpressions.schemaVersion,
   source: adImpressions.source,
+  sourceUrl: sql<string | null>`${adImpressions.rawJson}::jsonb ->> 'source_url'`,
   startedAt: adImpressions.startedAt,
   endedAt: adImpressions.endedAt,
   durationMs: adImpressions.durationMs,
@@ -218,7 +219,7 @@ export async function insertImpression(
   // and ensure a single pending job exists. Idempotent via ON CONFLICT.
   // Enrichment must never fail ingestion of the impression itself.
   const adVideoId = record.adVideoId?.trim();
-  if (adVideoId) {
+  if (record.source === "youtube" && adVideoId) {
     await enrichAd(db, userId, record.event_id, adVideoId).catch(() => undefined);
   }
 

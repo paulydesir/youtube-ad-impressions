@@ -1,3 +1,4 @@
+import { ManualImpressionForm } from "./ManualImpressionForm.tsx";
 import { useEffect, useState } from "react";
 import type { AdvertiserSummary } from "../src/analytics.ts";
 import type { AdImpressionRecord } from "../src/types.ts";
@@ -31,12 +32,16 @@ function RecentImpressions({ records }: { records: AdImpressionRecord[] }) {
       return <article className="recent-item" key={record.event_id ?? `${record.timestamp}-${index}`}>
         <Chip name={name} /><span className="name">{name}</span>
         <div className="meta-row">
-          <span className="meta">{formatDuration(record.duration_ms ?? 0)}{record.pod_position ? ` · ${record.pod_position}` : ""}</span>
+          <span className="meta">{record.source === "manual" ? "Manual" : formatDuration(record.duration_ms ?? 0)}{record.pod_position ? ` · ${record.pod_position}` : ""}</span>
           {record.skipped && <span className="badge">Skipped</span>}
           <time dateTime={record.timestamp}>{dateFormatter.format(new Date(record.timestamp))}</time>
         </div>
+        {record.source === "manual" && <>
+          <p className="impression-offer">{record.ad_headline}</p>
+          {record.source_url && /^https?:\/\//i.test(record.source_url) && <a href={record.source_url} target="_blank" rel="noreferrer">View source</a>}
+        </>}
       </article>;
-    }) : <p className="empty">Watch YouTube normally; completed ads appear here.</p>}
+    }) : <p className="empty">Add an impression above, or watch YouTube to capture ads automatically.</p>}
   </div>;
 }
 
@@ -79,6 +84,7 @@ function Dashboard() {
       <p id="status" className="status" role="status">{status}</p>
     </header>
     <button disabled={loading} onClick={() => setRevision(value => value + 1)}>Refresh history</button>
+    <ManualImpressionForm onSaved={() => setRevision(value => value + 1)} />
     <section className="metrics" aria-label="Summary">
       {metrics.map(([id, label, value]) => <article className="metric" key={id}>
         <span className="metric-label">{label}</span><strong className="metric-value" id={id}>{value}</strong>
